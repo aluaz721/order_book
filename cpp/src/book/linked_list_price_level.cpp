@@ -16,12 +16,14 @@ LinkedListPriceLevel::LinkedListPriceLevel(int64_t price)
 // Mutation
 // ─────────────────────────────────────────────────────────────────────────────
 
+// adds an order to the back of the list (FIFO)
 void LinkedListPriceLevel::add(Order order) {
     total_qty_ += order.quantity_remaining;
     orders_.push_back(std::move(order));
     last_added_ = std::prev(orders_.end()); // iterator to the element we just appended
 }
 
+// O(N) scan to find the order by ID and remove it. 
 void LinkedListPriceLevel::remove(uint64_t order_id) {
     // Linear scan — called by the interface contract when the caller does NOT
     // have a stored iterator. O(N). In practice, TreeOrderBook always has a
@@ -36,6 +38,7 @@ void LinkedListPriceLevel::remove(uint64_t order_id) {
     // No-op if not found — matches the interface contract.
 }
 
+// O(1) pop from the front of the list (FIFO)
 Order LinkedListPriceLevel::pop_front() {
     if (orders_.empty()) {
         throw std::logic_error("LinkedListPriceLevel::pop_front() called on empty level");
@@ -46,6 +49,7 @@ Order LinkedListPriceLevel::pop_front() {
     return front;
 }
 
+// O(1) reduce the front order's quantity (FIFO)
 void LinkedListPriceLevel::reduce_front(uint64_t qty) {
     if (orders_.empty()) {
         throw std::logic_error("LinkedListPriceLevel::reduce_front() called on empty level");
