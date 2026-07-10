@@ -37,7 +37,7 @@ struct OrderBookCallbacks {
 // at construction time and is also substitutable — see matching/.
 //
 // Design principles:
-//   1. The interface describes WHAT the book does; implementations define HOW.
+//   1. The interface describes what the book does; implementations define how.
 //   2. Stop/stop-limit orders are NOT handled here — they live in
 //      StopOrderManager, which wraps a concrete OrderBook and converts
 //      triggered stops into live orders before calling add().
