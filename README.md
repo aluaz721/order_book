@@ -73,9 +73,8 @@ cpp/
 ## Engine API
 Supported order types: Market, Market limit, Limit, Stop, Stop Limit, Immediate-or-Cancel (IOC), Fill-or-Kill (FOK) 
 
-## Build and Run
-
-### Run without containerization
+## Build, Run, and Visualize
+![Local host interactive dashboard](https://vscode-remote%2Bssh-002dremote-002baluas-005fvm.vscode-resource.vscode-cdn.net/home/az721/projects/order-book/docs/dashboard.png?version%3D1784153382507)
 
 ### Docker
 
@@ -88,7 +87,28 @@ docker compose up --build
 - Backend: http://localhost:8000
 - Frontend: http://localhost:5173
 
-### GitHub Actions
+
+### Run without Docker
+1. Install backend dependencies:
+   ```bash
+   cd python/backend && python3 -m pip install -r requirements.txt
+   ```
+
+2. Start the API server from the backend directory:
+   ```bash
+   cd python/backend && uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+   ```
+
+3. Install frontend dependencies:
+   ```bash
+   cd frontend && npm install
+   ```
+
+4. Start the React dev server:
+   ```bash
+   cd frontend && npm run dev
+   ```
+
 
 ### Unit Tests
 63 Google Test tests to validate core engine functionality.
@@ -97,18 +117,3 @@ docker compose up --build
 cmake
 ctest --test-dir build
 ```
-
-### Benchmark (CSV + Histogram)
-```bash
-./build/cpp/bench_tool --msgs 2000000 --warmup 50000 \
-  --out-csv docs/bench.csv --hist docs/hist.csv
-```
-Example output:
-```text
-msgs=2000000, time=0.156s, rate=12854458.3 msgs/s
-latency_us: p50=0.04 p90=0.08 p99=0.08 p99.9=0.12
-```
-See `docs/bench.md`, `docs/bench.csv`, and `docs/hist.csv` for reproducible results.
-
-
-### Replay from Snapshot
