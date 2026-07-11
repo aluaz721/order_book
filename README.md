@@ -74,7 +74,7 @@ cpp/
 Supported order types: Market, Market limit, Limit, Stop, Stop Limit, Immediate-or-Cancel (IOC), Fill-or-Kill (FOK) 
 
 ## Build, Run, and Visualize
-![Local host interactive dashboard](https://vscode-remote%2Bssh-002dremote-002baluas-005fvm.vscode-resource.vscode-cdn.net/home/az721/projects/order-book/docs/dashboard.png?version%3D1784153382507)
+![Locally hosted interactive dashboard](./docs/dashboard.png)
 
 ### Docker
 
