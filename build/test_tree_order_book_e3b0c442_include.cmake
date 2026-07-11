@@ -1,0 +1,5 @@
+if(EXISTS "/home/az721/projects/order-book/build/test_tree_order_book_e3b0c442_tests.cmake")
+  include("/home/az721/projects/order-book/build/test_tree_order_book_e3b0c442_tests.cmake")
+else()
+  add_test(test_tree_order_book_NOT_BUILT test_tree_order_book_NOT_BUILT)
+endif()

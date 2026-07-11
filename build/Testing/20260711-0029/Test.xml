@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Site BuildName="(empty)"
+	BuildStamp="20260711-0029-Experimental"
+	Name="(empty)"
+	Generator="ctest-4.4.0"
+	CompilerName=""
+	CompilerVersion=""
+	OSName="Linux"
+	Hostname="aluasvm"
+	OSRelease="7.0.0-22-generic"
+	OSVersion="#22-Ubuntu SMP PREEMPT_DYNAMIC Mon May 25 15:37:49 UTC 2026"
+	OSPlatform="aarch64"
+	Is64Bits="1"
+	VendorString=""
+	VendorID="Unknown Manufacturer"
+	FamilyID="8"
+	ModelID="0"
+	ModelName=""
+	ProcessorCacheSize="0"
+	NumberOfLogicalCPU="4"
+	NumberOfPhysicalCPU="4"
+	TotalVirtualMemory="3891"
+	TotalPhysicalMemory="3380"
+	LogicalProcessorsPerPhysical="1"
+	ProcessorClockFrequency="0.000000"
+	>
+	<Testing>
+		<StartDateTime>Jul 11 04:39 UTC</StartDateTime>
+		<StartTestTime>1783744762</StartTestTime>
+		<TestList/>
+		<EndDateTime>Jul 11 04:39 UTC</EndDateTime>
+		<EndTestTime>1783744762</EndTestTime>
+		<ElapsedMinutes>0</ElapsedMinutes>
+	</Testing>
+</Site>
