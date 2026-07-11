@@ -62,13 +62,24 @@ LevelMatchResult FIFOMatcher::match_level(
                 timestamp,
                 0
             });
-            result.consumed_passive_orders.push_back(std::to_string(passive.id));
+            result.consumed_passive_orders.push_back(passive.id);
         } else {
             // If the aggressive order is exhausted mid-order, reduce the front
             // resting order in place and leave it at the head of the queue.
             level.reduce_front(fill_qty);
             result.quantity_filled += fill_qty;
             qty_remaining -= fill_qty;
+
+            result.fills.push_back(FillEvent{
+                aggressive.id,
+                front.id,
+                aggressive.symbol,
+                aggressive.side,
+                fill_price,
+                fill_qty,
+                timestamp,
+                0
+            });
         }
     }
 

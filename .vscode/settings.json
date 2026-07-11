@@ -1,3 +1,4 @@
 {
-    "C_Cpp.default.compilerPath": "/usr/bin/gcc"
+    "C_Cpp.default.compilerPath": "/usr/bin/gcc",
+    "cmake.sourceDirectory": "/home/az721/projects/order-book/config"
 }

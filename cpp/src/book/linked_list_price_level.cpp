@@ -1,4 +1,5 @@
 #include "../../include/order_book/book/linked_list_price_level.hpp"
+#include <iostream>
 #include <stdexcept>
 
 namespace order_book {

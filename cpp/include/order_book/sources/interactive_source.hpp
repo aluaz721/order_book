@@ -5,6 +5,7 @@
 #include <queue>
 #include <mutex>
 #include <atomic>
+#include <optional>
 #include <string>
 #include <cstdint>
 
@@ -45,6 +46,13 @@ namespace order_book {
 // This source is never exhausted — it runs until the engine is stopped.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Plain struct representing a pending cancel request from the UI.
+// Kept separate from the Order queue so no sentinel values are needed.
+struct CancelRequest {
+    uint64_t order_id;
+    uint64_t timestamp;  // 0 = use current simulation time
+};
+
 class InteractiveSource : public OrderSource {
 public:
     explicit InteractiveSource(std::string name = "InteractiveSource");
@@ -74,13 +82,19 @@ public:
 
     // ── Query (approximate — may be stale by the time caller reads it) ───────
 
-    size_t pending_count() const noexcept;
+    size_t pending_count()        const noexcept;
+    size_t pending_cancel_count() const noexcept;
+
+    // Drain one cancel request. Called by the engine after each order batch.
+    // Engine thread only.
+    std::optional<CancelRequest> next_cancel();
     bool   is_empty()      const noexcept { return !has_orders_.load(); }
 
 private:
     std::string              name_;
     mutable std::mutex       mutex_;
-    std::queue<Order>        queue_;
+    std::queue<Order>         queue_;
+    std::queue<CancelRequest> cancel_queue_;
     std::atomic<bool>        has_orders_{false};
     std::atomic<uint64_t>    next_id_{1};    // auto-assigned IDs start at 1
 };

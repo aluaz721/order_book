@@ -54,6 +54,18 @@ void TreeOrderBook::add(Order order) {
     }
 
     // ── 2. Match against opposite side ────────────────────────────────────────
+    if (order.type == OrderType::FILL_OR_KILL && !can_fill_fully(order)) {
+        if (callbacks_.on_cancel) {
+            callbacks_.on_cancel(CancelEvent{
+                order.id, symbol_, order.side, order.price,
+                CancelReason::FOK_FAILED,
+                order.quantity_remaining, order.timestamp, sequence_
+            });
+        }
+        emit_snapshot(order.timestamp);
+        return;
+    }
+
     match(order);
 
     // ── 3. Post-match handling by order type ──────────────────────────────────
@@ -247,18 +259,15 @@ void TreeOrderBook::execute(uint64_t order_id, uint64_t qty, uint64_t timestamp)
         order_map_.erase(map_it);
     } else {
         // Partial feed fill — reduce quantity in place.
-        loc.it->quantity_remaining -= fill_qty;
-        // Note: total_qty_ in PriceLevel is not updated here because we used
-        // the iterator directly. We must call the level's reduce method.
         if (loc.side == Side::BID) {
             auto level_it = bids_.find(loc.price);
             if (level_it != bids_.end()) {
-                level_it->second.reduce_front(0); // qty already reduced on iterator
-                // Actually need to manipulate total_qty_ — use the level's
-                // internal accounting by reducing via the correct path.
-                // Because we can't call reduce_front (that reduces front, not
-                // arbitrary order), we subtract directly from the level.
-                // This is why LinkedListPriceLevel tracks total_qty_ separately.
+                level_it->second.reduce_front(fill_qty);
+            }
+        } else {
+            auto level_it = asks_.find(loc.price);
+            if (level_it != asks_.end()) {
+                level_it->second.reduce_front(fill_qty);
             }
         }
     }
@@ -272,10 +281,8 @@ void TreeOrderBook::execute(uint64_t order_id, uint64_t qty, uint64_t timestamp)
 
 void TreeOrderBook::replace(uint64_t old_order_id, Order new_order) {
     cancel(old_order_id);
-    add(std::move(new_order));
-    // Note: add() emits its own snapshot, so we don't emit another here.
-    // The cancel() snapshot is slightly redundant but acceptable — if this
-    // is performance-critical, inline the cancel logic and suppress its snapshot.
+    rest(std::move(new_order));
+    emit_snapshot(new_order.timestamp);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -344,45 +351,16 @@ void TreeOrderBook::match(Order& aggressive) {
             // from the level, so we just clean up the hash map.
             auto passive_it = order_map_.find(fill.passive_order_id);
             if (passive_it != order_map_.end()) {
-                // If the passive order's iterator is now invalid (matcher
-                // called pop_front()), the order_map entry must be removed.
-                // We check by attempting to read quantity from the iterator —
-                // if the matcher fully filled this order, it called pop_front()
-                // and the iterator is gone. We detect this by checking whether
-                // the level is still tracking this order via total_qty change.
-                // Simpler: the matcher returns fills; we remove from order_map
-                // any passive order whose ID appears in fills with a qty that
-                // exhausted it. We'll track this via a flag in the fill.
-                //
-                // For now: always remove on fill. If a passive order was
-                // partially filled, the matcher calls reduce_front() (not
-                // pop_front()), leaving the order in the level. We should only
-                // remove it from order_map if it was fully consumed.
-                //
-                // The matcher sets level_exhausted = true when the level is
-                // empty after all fills — but a level being empty doesn't mean
-                // each individual order was fully filled (FOK logic aside).
-                //
-                // Clean approach: check if order still has quantity in the level.
-                // Since we can't easily query arbitrary resting qty from the
-                // iterator post-match, we rely on the matcher contract:
-                //   - pop_front() is called for FULL fills
-                //   - reduce_front() is called for PARTIAL fills of front order
-                // After a full fill the iterator in order_map_ is invalid.
-                // We remove it unconditionally and re-insert if partially filled.
-                // The matcher must set passive_order_id only for FULLY consumed
-                // passive orders when using pop_front().
-                //
-                // → For simplicity in this MVP, treat every fill event as a
-                //   full passive fill and remove from order_map_.
-                //   FIFOMatcher always fully fills or partially fills only the
-                //   FRONT order. The front order's iterator is stored in
-                //   order_map_ and remains valid after reduce_front() but
-                //   is invalidated after pop_front().
-                //   The FIFOMatcher emits a fill only when it calls pop_front()
-                //   (full fill) — reduce_front() (partial) produces no fill
-                //   event; the fill quantity goes against the aggressive order.
-                order_map_.erase(passive_it);
+                bool fully_consumed = false;
+                for (auto consumed_id : result.consumed_passive_orders) {
+                    if (consumed_id == fill.passive_order_id) {
+                        fully_consumed = true;
+                        break;
+                    }
+                }
+                if (fully_consumed) {
+                    order_map_.erase(passive_it);
+                }
             }
 
             last_trade_price_ = fill.fill_price;
@@ -467,8 +445,10 @@ bool TreeOrderBook::can_fill_fully(const Order& order) const noexcept {
 
 void TreeOrderBook::emit_snapshot(uint64_t timestamp) {
     if (!callbacks_.on_book_update) return;
-    callbacks_.on_book_update(snapshot(10));
-    (void)timestamp;
+    auto snap = snapshot(10);
+    snap.timestamp = timestamp;
+    snap.sequence  = ++sequence_;
+    callbacks_.on_book_update(snap);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

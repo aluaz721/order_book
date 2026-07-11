@@ -19,7 +19,7 @@ namespace order_book {
 struct LevelMatchResult {
     uint64_t                    quantity_filled;  // total qty filled at this level
     std::vector<FillEvent>      fills;           // one per passive order touched
-    std::vector<std::string>    consumed_passive_orders; // IDs of passive orders that were fully filled
+    std::vector<uint64_t>       consumed_passive_orders; // IDs of passive orders fully filled
     bool                        level_exhausted; // true if the price level is now empty
 };
 
