@@ -4,7 +4,10 @@
 		"/home/az721/projects/order-book/build/cmake_install.cmake",
 		"/home/az721/projects/order-book/build/_deps/googletest-build/cmake_install.cmake",
 		"/home/az721/projects/order-book/build/_deps/googletest-build/googlemock/cmake_install.cmake",
-		"/home/az721/projects/order-book/build/_deps/googletest-build/googletest/cmake_install.cmake"
+		"/home/az721/projects/order-book/build/_deps/googletest-build/googletest/cmake_install.cmake",
+		"/home/az721/projects/order-book/build/_deps/benchmark-build/cmake_install.cmake",
+		"/home/az721/projects/order-book/build/_deps/benchmark-build/src/cmake_install.cmake",
+		"/home/az721/projects/order-book/build/_deps/benchmark-build/test/cmake_install.cmake"
 	],
 	"Parallel" : false
 }

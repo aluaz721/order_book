@@ -3917,3 +3917,1165 @@ events:
         
       exitCode: 0
 ...
+
+---
+events:
+  -
+    kind: "find_package-v1"
+    backtrace:
+      - "CMakeLists.txt:31 (find_package)"
+    name: "benchmark"
+    configs:
+      -
+        filename: "benchmark.cps"
+        kind: "cps"
+      -
+        filename: "benchmarkConfig.cmake"
+        kind: "cmake"
+      -
+        filename: "benchmark-config.cmake"
+        kind: "cmake"
+    version_request:
+      exact: false
+    settings:
+      required: "required_explicit"
+      quiet: false
+      global: false
+      policy_scope: true
+      bypass_provider: false
+      names:
+        - "benchmark"
+      path_suffixes:
+        - ""
+      paths:
+        CMAKE_FIND_USE_CMAKE_PATH: true
+        CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+        CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+        CMAKE_FIND_USE_INSTALL_PREFIX: true
+        CMAKE_FIND_USE_PACKAGE_ROOT_PATH: true
+        CMAKE_FIND_USE_CMAKE_PACKAGE_REGISTRY: true
+        CMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY: true
+        CMAKE_FIND_ROOT_PATH_MODE: "BOTH"
+    candidates:
+      -
+        path: "/home/az721/projects/order-book/build/CMakeFiles/pkgRedirects/benchmarkConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/az721/projects/order-book/build/CMakeFiles/pkgRedirects/benchmark-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/az721/projects/order-book/build/CMakeFiles/pkgRedirects/lib/aarch64-linux-gnu/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/home/az721/projects/order-book/build/CMakeFiles/pkgRedirects/lib/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/home/az721/projects/order-book/build/CMakeFiles/pkgRedirects/share/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/home/az721/.vscode-server/cli/servers/Stable-7e7950df89d055b5a378379db9ee14290772148a/server/bin/remote-cli/benchmarkConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/az721/.vscode-server/cli/servers/Stable-7e7950df89d055b5a378379db9ee14290772148a/server/bin/remote-cli/benchmark-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/home/az721/.vscode-server/cli/servers/Stable-7e7950df89d055b5a378379db9ee14290772148a/server/bin/remote-cli/lib/aarch64-linux-gnu/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/home/az721/.vscode-server/cli/servers/Stable-7e7950df89d055b5a378379db9ee14290772148a/server/bin/remote-cli/lib/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/home/az721/.vscode-server/cli/servers/Stable-7e7950df89d055b5a378379db9ee14290772148a/server/bin/remote-cli/share/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/local/benchmarkConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/local/benchmark-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/local/lib/aarch64-linux-gnu/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/local/lib/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/local/share/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/benchmarkConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/benchmark-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/aarch64-linux-gnu/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/lib/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/share/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/benchmarkConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/benchmark-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/lib/aarch64-linux-gnu/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/lib/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/share/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/games/benchmarkConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/games/benchmark-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/games/lib/aarch64-linux-gnu/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/games/lib/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/games/share/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/local/games/benchmarkConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/local/games/benchmark-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/usr/local/games/lib/aarch64-linux-gnu/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/local/games/lib/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/usr/local/games/share/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/snap/benchmarkConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/snap/benchmark-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/snap/cmake/benchmarkConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/snap/cmake/benchmark-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/snap/lib/aarch64-linux-gnu/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/snap/lib/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/snap/share/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/snap/cmake/1555/benchmarkConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/snap/cmake/1555/benchmark-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/snap/cmake/1555/lib/aarch64-linux-gnu/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/snap/cmake/1555/lib/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/snap/cmake/1555/share/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/opt/benchmarkConfig.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/benchmark-config.cmake"
+        mode: "config"
+        reason: "no_exist"
+      -
+        path: "/opt/lib/aarch64-linux-gnu/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/opt/lib/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+      -
+        path: "/opt/share/cps/benchmark.cps"
+        mode: "cps"
+        reason: "no_exist"
+    found: null
+    search_context:
+      ENV{PATH}:
+        - "/home/az721/.vscode-server/cli/servers/Stable-7e7950df89d055b5a378379db9ee14290772148a/server/bin/remote-cli"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/snap/cmake/1555"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+...
+
+---
+events:
+  -
+    kind: "find-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/FindGit.cmake:111 (find_program)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/GetGitVersion.cmake:14 (find_package)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:112 (include)"
+    mode: "program"
+    variable: "GIT_EXECUTABLE"
+    description: "Git command line client"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "git"
+    candidate_directories:
+      - "/home/az721/.vscode-server/cli/servers/Stable-7e7950df89d055b5a378379db9ee14290772148a/server/bin/remote-cli/"
+      - "/usr/local/sbin/"
+      - "/usr/local/bin/"
+      - "/usr/sbin/"
+      - "/usr/bin/"
+      - "/sbin/"
+      - "/bin/"
+      - "/usr/games/"
+      - "/usr/local/games/"
+      - "/snap/bin/"
+      - "/usr/local/bin/"
+      - "/usr/local/sbin/"
+      - "/usr/local/"
+      - "/usr/bin/"
+      - "/usr/sbin/"
+      - "/usr/"
+      - "/bin/"
+      - "/sbin/"
+      - "/snap/cmake/1555/bin/"
+      - "/snap/cmake/1555/sbin/"
+      - "/snap/cmake/1555/"
+      - "/usr/X11R6/bin/"
+      - "/usr/X11R6/sbin/"
+      - "/usr/X11R6/"
+      - "/usr/pkg/bin/"
+      - "/usr/pkg/sbin/"
+      - "/usr/pkg/"
+      - "/opt/bin/"
+      - "/opt/sbin/"
+      - "/opt/"
+    searched_directories:
+      - "/home/az721/.vscode-server/cli/servers/Stable-7e7950df89d055b5a378379db9ee14290772148a/server/bin/remote-cli/git"
+      - "/usr/local/sbin/git"
+      - "/usr/local/bin/git"
+      - "/usr/sbin/git"
+    found: "/usr/bin/git"
+    search_context:
+      ENV{PATH}:
+        - "/home/az721/.vscode-server/cli/servers/Stable-7e7950df89d055b5a378379db9ee14290772148a/server/bin/remote-cli"
+        - "/usr/local/sbin"
+        - "/usr/local/bin"
+        - "/usr/sbin"
+        - "/usr/bin"
+        - "/sbin"
+        - "/bin"
+        - "/usr/games"
+        - "/usr/local/games"
+        - "/snap/bin"
+      CMAKE_INSTALL_PREFIX: "/usr/local"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "/usr/local"
+        - "/usr"
+        - "/"
+        - "/snap/cmake/1555"
+        - "/usr/local"
+        - "/usr/X11R6"
+        - "/usr/pkg"
+        - "/opt"
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckLibraryExists.cmake:154 (try_compile)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:135 (check_library_exists)"
+    checks:
+      - "Looking for shm_open in rt"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-sjOGz4"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-sjOGz4"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_LIB_RT"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-sjOGz4'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_818de/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_818de.dir/build.make CMakeFiles/cmTC_818de.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-sjOGz4'
+        Building CXX object CMakeFiles/cmTC_818de.dir/CheckFunctionExists.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++   -DCHECK_FUNCTION_EXISTS=shm_open -o CMakeFiles/cmTC_818de.dir/CheckFunctionExists.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-sjOGz4/CheckFunctionExists.cxx
+        Linking CXX executable cmTC_818de
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_818de.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++  -DCHECK_FUNCTION_EXISTS=shm_open CMakeFiles/cmTC_818de.dir/CheckFunctionExists.cxx.o -o cmTC_818de  -lrt
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-sjOGz4'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:184 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_WALL"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-rhX7I4"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-rhX7I4"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: ""
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_WALL"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-rhX7I4'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_9f415/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_9f415.dir/build.make CMakeFiles/cmTC_9f415.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-rhX7I4'
+        Building CXX object CMakeFiles/cmTC_9f415.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_WALL  -Wall   -Wall -o CMakeFiles/cmTC_9f415.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-rhX7I4/src.cxx
+        Linking CXX executable cmTC_9f415
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_9f415.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall CMakeFiles/cmTC_9f415.dir/src.cxx.o -o cmTC_9f415
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-rhX7I4'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:185 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_WEXTRA"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-p1qpKY"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-p1qpKY"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_WEXTRA"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-p1qpKY'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_3a803/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_3a803.dir/build.make CMakeFiles/cmTC_3a803.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-p1qpKY'
+        Building CXX object CMakeFiles/cmTC_3a803.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_WEXTRA  -Wall  -Wextra   -Wextra -o CMakeFiles/cmTC_3a803.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-p1qpKY/src.cxx
+        Linking CXX executable cmTC_3a803
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_3a803.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra CMakeFiles/cmTC_3a803.dir/src.cxx.o -o cmTC_3a803
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-p1qpKY'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:186 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_WSHADOW"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-VGDtpN"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-VGDtpN"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_WSHADOW"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-VGDtpN'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_575de/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_575de.dir/build.make CMakeFiles/cmTC_575de.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-VGDtpN'
+        Building CXX object CMakeFiles/cmTC_575de.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_WSHADOW  -Wall  -Wextra  -Wshadow   -Wshadow -o CMakeFiles/cmTC_575de.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-VGDtpN/src.cxx
+        Linking CXX executable cmTC_575de
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_575de.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow CMakeFiles/cmTC_575de.dir/src.cxx.o -o cmTC_575de
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-VGDtpN'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:187 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_WFLOAT_EQUAL"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-KIZSAx"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-KIZSAx"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_WFLOAT_EQUAL"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-KIZSAx'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_d3962/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_d3962.dir/build.make CMakeFiles/cmTC_d3962.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-KIZSAx'
+        Building CXX object CMakeFiles/cmTC_d3962.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_WFLOAT_EQUAL  -Wall  -Wextra  -Wshadow  -Wfloat-equal   -Wfloat-equal -o CMakeFiles/cmTC_d3962.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-KIZSAx/src.cxx
+        Linking CXX executable cmTC_d3962
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_d3962.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal CMakeFiles/cmTC_d3962.dir/src.cxx.o -o cmTC_d3962
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-KIZSAx'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:189 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_WERROR"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-1hSgjH"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-1hSgjH"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_WERROR"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-1hSgjH'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_7846d/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_7846d.dir/build.make CMakeFiles/cmTC_7846d.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-1hSgjH'
+        Building CXX object CMakeFiles/cmTC_7846d.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_WERROR  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -Werror   -Werror -o CMakeFiles/cmTC_7846d.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-1hSgjH/src.cxx
+        Linking CXX executable cmTC_7846d
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_7846d.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -Werror CMakeFiles/cmTC_7846d.dir/src.cxx.o -o cmTC_7846d
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-1hSgjH'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:197 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_PEDANTIC"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-QKQwiW"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-QKQwiW"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_PEDANTIC"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-QKQwiW'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_13cb6/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_13cb6.dir/build.make CMakeFiles/cmTC_13cb6.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-QKQwiW'
+        Building CXX object CMakeFiles/cmTC_13cb6.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_PEDANTIC  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic   -pedantic -o CMakeFiles/cmTC_13cb6.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-QKQwiW/src.cxx
+        Linking CXX executable cmTC_13cb6
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_13cb6.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic CMakeFiles/cmTC_13cb6.dir/src.cxx.o -o cmTC_13cb6
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-QKQwiW'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:198 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_PEDANTIC_ERRORS"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-P0JIhL"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-P0JIhL"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_PEDANTIC_ERRORS"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-P0JIhL'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_0312e/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_0312e.dir/build.make CMakeFiles/cmTC_0312e.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-P0JIhL'
+        Building CXX object CMakeFiles/cmTC_0312e.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_PEDANTIC_ERRORS  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors   -pedantic-errors -o CMakeFiles/cmTC_0312e.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-P0JIhL/src.cxx
+        Linking CXX executable cmTC_0312e
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_0312e.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors CMakeFiles/cmTC_0312e.dir/src.cxx.o -o cmTC_0312e
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-P0JIhL'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:199 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_WSHORTEN_64_TO_32"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-g8u1aU"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-g8u1aU"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_WSHORTEN_64_TO_32"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-g8u1aU'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_21988/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_21988.dir/build.make CMakeFiles/cmTC_21988.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-g8u1aU'
+        Building CXX object CMakeFiles/cmTC_21988.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_WSHORTEN_64_TO_32  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -Wshorten-64-to-32   -Wshorten-64-to-32 -o CMakeFiles/cmTC_21988.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-g8u1aU/src.cxx
+        aarch64-linux-gnu-g++: error: unrecognized command-line option '-Wshorten-64-to-32'
+        aarch64-linux-gnu-g++: error: unrecognized command-line option '-Wshorten-64-to-32'
+        gmake[1]: *** [CMakeFiles/cmTC_21988.dir/build.make:81: CMakeFiles/cmTC_21988.dir/src.cxx.o] Error 1
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-g8u1aU'
+        gmake: *** [Makefile:134: cmTC_21988/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:200 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_FSTRICT_ALIASING"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-q0Lxoc"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-q0Lxoc"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_FSTRICT_ALIASING"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-q0Lxoc'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_bcccf/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_bcccf.dir/build.make CMakeFiles/cmTC_bcccf.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-q0Lxoc'
+        Building CXX object CMakeFiles/cmTC_bcccf.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_FSTRICT_ALIASING  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing   -fstrict-aliasing -o CMakeFiles/cmTC_bcccf.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-q0Lxoc/src.cxx
+        Linking CXX executable cmTC_bcccf
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_bcccf.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing CMakeFiles/cmTC_bcccf.dir/src.cxx.o -o cmTC_bcccf
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-q0Lxoc'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:203 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_WNO_DEPRECATED_DECLARATIONS"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-Q9eal4"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-Q9eal4"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_WNO_DEPRECATED_DECLARATIONS"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-Q9eal4'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_f5cfc/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_f5cfc.dir/build.make CMakeFiles/cmTC_f5cfc.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-Q9eal4'
+        Building CXX object CMakeFiles/cmTC_f5cfc.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_WNO_DEPRECATED_DECLARATIONS  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations   -Wno-deprecated-declarations -o CMakeFiles/cmTC_f5cfc.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-Q9eal4/src.cxx
+        Linking CXX executable cmTC_f5cfc
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_f5cfc.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations CMakeFiles/cmTC_f5cfc.dir/src.cxx.o -o cmTC_f5cfc
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-Q9eal4'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:212 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_WNO_DEPRECATED"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-K1R4n6"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-K1R4n6"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_WNO_DEPRECATED"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-K1R4n6'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_ea443/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_ea443.dir/build.make CMakeFiles/cmTC_ea443.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-K1R4n6'
+        Building CXX object CMakeFiles/cmTC_ea443.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_WNO_DEPRECATED  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wno-deprecated   -Wno-deprecated -o CMakeFiles/cmTC_ea443.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-K1R4n6/src.cxx
+        Linking CXX executable cmTC_ea443
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_ea443.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wno-deprecated CMakeFiles/cmTC_ea443.dir/src.cxx.o -o cmTC_ea443
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-K1R4n6'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:222 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_WSTRICT_ALIASING"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-kozFAr"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-kozFAr"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_WSTRICT_ALIASING"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-kozFAr'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_0440a/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_0440a.dir/build.make CMakeFiles/cmTC_0440a.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-kozFAr'
+        Building CXX object CMakeFiles/cmTC_0440a.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_WSTRICT_ALIASING  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing   -Wstrict-aliasing -o CMakeFiles/cmTC_0440a.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-kozFAr/src.cxx
+        Linking CXX executable cmTC_0440a
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_0440a.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing CMakeFiles/cmTC_0440a.dir/src.cxx.o -o cmTC_0440a
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-kozFAr'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:227 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_WD654"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-j8fSJm"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-j8fSJm"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_WD654"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-j8fSJm'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_b3bfd/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_b3bfd.dir/build.make CMakeFiles/cmTC_b3bfd.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-j8fSJm'
+        Building CXX object CMakeFiles/cmTC_b3bfd.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_WD654  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing  -wd654   -wd654 -o CMakeFiles/cmTC_b3bfd.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-j8fSJm/src.cxx
+        aarch64-linux-gnu-g++: error: unrecognized command-line option '-wd654'
+        aarch64-linux-gnu-g++: error: unrecognized command-line option '-wd654'
+        gmake[1]: *** [CMakeFiles/cmTC_b3bfd.dir/build.make:81: CMakeFiles/cmTC_b3bfd.dir/src.cxx.o] Error 1
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-j8fSJm'
+        gmake: *** [Makefile:134: cmTC_b3bfd/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:228 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_WTHREAD_SAFETY"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-Wi2HET"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-Wi2HET"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_WTHREAD_SAFETY"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-Wi2HET'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_babdc/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_babdc.dir/build.make CMakeFiles/cmTC_babdc.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-Wi2HET'
+        Building CXX object CMakeFiles/cmTC_babdc.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_WTHREAD_SAFETY  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing  -Wthread-safety   -Wthread-safety -o CMakeFiles/cmTC_babdc.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-Wi2HET/src.cxx
+        aarch64-linux-gnu-g++: error: unrecognized command-line option '-Wthread-safety'
+        aarch64-linux-gnu-g++: error: unrecognized command-line option '-Wthread-safety'
+        gmake[1]: *** [CMakeFiles/cmTC_babdc.dir/build.make:81: CMakeFiles/cmTC_babdc.dir/src.cxx.o] Error 1
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-Wi2HET'
+        gmake: *** [Makefile:134: cmTC_babdc/fast] Error 2
+        
+      exitCode: 2
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/AddCXXCompilerFlag.cmake:34 (check_cxx_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:279 (add_cxx_compiler_flag)"
+    checks:
+      - "Performing Test HAVE_CXX_FLAG_COVERAGE"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-FvPLSN"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-FvPLSN"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "HAVE_CXX_FLAG_COVERAGE"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-FvPLSN'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_aded0/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_aded0.dir/build.make CMakeFiles/cmTC_aded0.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-FvPLSN'
+        Building CXX object CMakeFiles/cmTC_aded0.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DHAVE_CXX_FLAG_COVERAGE  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing  --coverage   --coverage -o CMakeFiles/cmTC_aded0.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-FvPLSN/src.cxx
+        Linking CXX executable cmTC_aded0
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_aded0.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing  --coverage CMakeFiles/cmTC_aded0.dir/src.cxx.o -o cmTC_aded0
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-FvPLSN'
+        
+      exitCode: 0
+  -
+    kind: "try_run-v1"
+    backtrace:
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/CXXFeatureCheck.cmake:55 (try_run)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:308 (cxx_feature_check)"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing"
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "COMPILE_HAVE_STD_REGEX"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_5e7bf/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_5e7bf.dir/build.make CMakeFiles/cmTC_5e7bf.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp'
+        Building CXX object CMakeFiles/cmTC_5e7bf.dir/std_regex.cpp.o
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing  -std=c++11 -o CMakeFiles/cmTC_5e7bf.dir/std_regex.cpp.o -c /home/az721/projects/order-book/build/_deps/benchmark-src/cmake/std_regex.cpp
+        Linking CXX executable cmTC_5e7bf
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_5e7bf.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing  CMakeFiles/cmTC_5e7bf.dir/std_regex.cpp.o -o cmTC_5e7bf
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp'
+        
+      exitCode: 0
+    runResult:
+      variable: "RUN_HAVE_STD_REGEX"
+      cached: true
+      stdout: |
+      exitCode: 0
+  -
+    kind: "try_run-v1"
+    backtrace:
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/CXXFeatureCheck.cmake:55 (try_run)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:309 (cxx_feature_check)"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing"
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "COMPILE_HAVE_GNU_POSIX_REGEX"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_d0f93/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_d0f93.dir/build.make CMakeFiles/cmTC_d0f93.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp'
+        Building CXX object CMakeFiles/cmTC_d0f93.dir/gnu_posix_regex.cpp.o
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing  -std=c++11 -o CMakeFiles/cmTC_d0f93.dir/gnu_posix_regex.cpp.o -c /home/az721/projects/order-book/build/_deps/benchmark-src/cmake/gnu_posix_regex.cpp
+        /home/az721/projects/order-book/build/_deps/benchmark-src/cmake/gnu_posix_regex.cpp:1:10: fatal error: gnuregex.h: No such file or directory
+            1 | #include <gnuregex.h>
+              |          ^~~~~~~~~~~~
+        compilation terminated.
+        gmake[1]: *** [CMakeFiles/cmTC_d0f93.dir/build.make:81: CMakeFiles/cmTC_d0f93.dir/gnu_posix_regex.cpp.o] Error 1
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp'
+        gmake: *** [Makefile:134: cmTC_d0f93/fast] Error 2
+        
+      exitCode: 2
+    runResult:
+      variable: "RUN_HAVE_GNU_POSIX_REGEX"
+      cached: true
+  -
+    kind: "try_run-v1"
+    backtrace:
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/CXXFeatureCheck.cmake:55 (try_run)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:310 (cxx_feature_check)"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing"
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "COMPILE_HAVE_POSIX_REGEX"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_6691c/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_6691c.dir/build.make CMakeFiles/cmTC_6691c.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp'
+        Building CXX object CMakeFiles/cmTC_6691c.dir/posix_regex.cpp.o
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing  -std=c++11 -o CMakeFiles/cmTC_6691c.dir/posix_regex.cpp.o -c /home/az721/projects/order-book/build/_deps/benchmark-src/cmake/posix_regex.cpp
+        Linking CXX executable cmTC_6691c
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_6691c.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing  CMakeFiles/cmTC_6691c.dir/posix_regex.cpp.o -o cmTC_6691c
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp'
+        
+      exitCode: 0
+    runResult:
+      variable: "RUN_HAVE_POSIX_REGEX"
+      cached: true
+      stdout: |
+      exitCode: 0
+  -
+    kind: "try_run-v1"
+    backtrace:
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/CXXFeatureCheck.cmake:55 (try_run)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/CMakeLists.txt:319 (cxx_feature_check)"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing"
+      CMAKE_CXX_FLAGS_DEBUG: "-g"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "COMPILE_HAVE_STEADY_CLOCK"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_e269e/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_e269e.dir/build.make CMakeFiles/cmTC_e269e.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp'
+        Building CXX object CMakeFiles/cmTC_e269e.dir/steady_clock.cpp.o
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing  -std=c++11 -o CMakeFiles/cmTC_e269e.dir/steady_clock.cpp.o -c /home/az721/projects/order-book/build/_deps/benchmark-src/cmake/steady_clock.cpp
+        Linking CXX executable cmTC_e269e
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_e269e.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing  CMakeFiles/cmTC_e269e.dir/steady_clock.cpp.o -o cmTC_e269e
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeTmp'
+        
+      exitCode: 0
+    runResult:
+      variable: "RUN_HAVE_STEADY_CLOCK"
+      cached: true
+      stdout: |
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/test/CMakeLists.txt:31 (check_cxx_compiler_flag)"
+    checks:
+      - "Performing Test BENCHMARK_HAS_O3_FLAG"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-kPyYSu"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-kPyYSu"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "BENCHMARK_HAS_O3_FLAG"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-kPyYSu'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_2997b/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_2997b.dir/build.make CMakeFiles/cmTC_2997b.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-kPyYSu'
+        Building CXX object CMakeFiles/cmTC_2997b.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DBENCHMARK_HAS_O3_FLAG  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing    -O3 -o CMakeFiles/cmTC_2997b.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-kPyYSu/src.cxx
+        Linking CXX executable cmTC_2997b
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_2997b.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing  CMakeFiles/cmTC_2997b.dir/src.cxx.o -o cmTC_2997b
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-kPyYSu'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/test/CMakeLists.txt:182 (check_cxx_compiler_flag)"
+    checks:
+      - "Performing Test BENCHMARK_HAS_WNO_ODR"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-lJH7Eh"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-lJH7Eh"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "BENCHMARK_HAS_WNO_ODR"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-lJH7Eh'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_aa017/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_aa017.dir/build.make CMakeFiles/cmTC_aa017.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-lJH7Eh'
+        Building CXX object CMakeFiles/cmTC_aa017.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DBENCHMARK_HAS_WNO_ODR  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing    -Wno-odr -o CMakeFiles/cmTC_aa017.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-lJH7Eh/src.cxx
+        Linking CXX executable cmTC_aa017
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_aa017.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing  CMakeFiles/cmTC_aa017.dir/src.cxx.o -o cmTC_aa017
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-lJH7Eh'
+        
+      exitCode: 0
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake:138 (try_compile)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/Internal/CheckCompilerFlag.cmake:18 (cmake_check_source_compiles)"
+      - "/snap/cmake/1555/share/cmake-4.4/Modules/CheckCXXCompilerFlag.cmake:103 (cmake_check_compiler_flag)"
+      - "/home/az721/projects/order-book/build/_deps/benchmark-src/test/CMakeLists.txt:183 (check_cxx_compiler_flag)"
+    checks:
+      - "Performing Test BENCHMARK_HAS_WNO_LTO_TYPE_MISMATCH"
+    directories:
+      source: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-AFaaco"
+      binary: "/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-AFaaco"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: ""
+      CMAKE_MODULE_PATH: "/home/az721/projects/order-book/build/_deps/benchmark-src/cmake/Modules;/home/az721/projects/order-book/build/_deps/benchmark-src/cmake"
+    buildResult:
+      variable: "BENCHMARK_HAS_WNO_LTO_TYPE_MISMATCH"
+      cached: true
+      stdout: |
+        Change Dir: '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-AFaaco'
+        
+        Run Build Command(s): /snap/cmake/1555/bin/cmake -E env VERBOSE=1 /usr/bin/gmake -f Makefile cmTC_2c6a7/fast
+        /usr/bin/gmake  -f CMakeFiles/cmTC_2c6a7.dir/build.make CMakeFiles/cmTC_2c6a7.dir/build
+        gmake[1]: Entering directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-AFaaco'
+        Building CXX object CMakeFiles/cmTC_2c6a7.dir/src.cxx.o
+        /usr/bin/aarch64-linux-gnu-g++ -DBENCHMARK_HAS_WNO_LTO_TYPE_MISMATCH  -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing    -Wno-lto-type-mismatch -o CMakeFiles/cmTC_2c6a7.dir/src.cxx.o -c /home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-AFaaco/src.cxx
+        Linking CXX executable cmTC_2c6a7
+        /snap/cmake/1555/bin/cmake -E cmake_link_script CMakeFiles/cmTC_2c6a7.dir/link.txt --verbose=1
+        /usr/bin/aarch64-linux-gnu-g++   -Wall  -Wextra  -Wshadow  -Wfloat-equal  -pedantic  -pedantic-errors  -fstrict-aliasing  -Wno-deprecated-declarations  -Wstrict-aliasing  CMakeFiles/cmTC_2c6a7.dir/src.cxx.o -o cmTC_2c6a7
+        gmake[1]: Leaving directory '/home/az721/projects/order-book/build/CMakeFiles/CMakeScratch/TryCompile-AFaaco'
+        
+      exitCode: 0
+...

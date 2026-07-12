@@ -16,16 +16,26 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
+include(FetchContent)
+FetchContent_Declare(
+  benchmark
+  URL https://github.com/google/benchmark/archive/v1.7.1.zip
+)
+FetchContent_MakeAvailable(benchmark)
+
 enable_testing()
 
-file(GLOB_RECURSE ORDER_BOOK_SOURCES ../cpp/src/*.cpp)
+file(GLOB_RECURSE ORDER_BOOK_SOURCES cpp/src/*.cpp)
 
 add_library(order_book STATIC ${ORDER_BOOK_SOURCES})
-target_include_directories(order_book PUBLIC ../cpp/include)
+target_include_directories(order_book PUBLIC cpp/include)
 target_compile_features(order_book PUBLIC cxx_std_17)
 
-add_executable(test_tree_order_book ../cpp/tests/book/test_tree_order_book.cpp)
+add_executable(test_tree_order_book cpp/tests/book/test_tree_order_book.cpp)
 target_link_libraries(test_tree_order_book PRIVATE order_book GTest::gtest_main)
+
+add_executable(bench_order_book cpp/benchmarks/bench_order_book.cpp)
+target_link_libraries(bench_order_book PRIVATE order_book benchmark)
 
 include(GoogleTest)
 gtest_discover_tests(test_tree_order_book)
