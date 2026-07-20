@@ -177,6 +177,24 @@ npm install
 npm run dev
 ```
  
+### Deployment
+
+The backend deploys as a free Docker web service on **Render**; the frontend deploys as a free static site on **Vercel**.
+
+**Backend — Render**
+1. Push this repo to GitHub.
+2. Render dashboard → New → Blueprint → connect the repo. Render reads [`render.yaml`](render.yaml) and provisions `order-book-backend` as a free Docker web service (no config needed).
+3. Copy the deployed URL, e.g. `https://order-book-backend.onrender.com`.
+   - The free plan spins down after ~15 min idle; the next request takes 30-60s to wake it back up.
+
+**Frontend — Vercel**
+1. Vercel dashboard → New Project → import the same repo.
+2. Set **Root Directory** to `frontend` (Vercel auto-detects the Vite preset — build command and output directory need no changes).
+3. Add an environment variable `VITE_API_BASE` set to the Render URL from above, with no trailing slash.
+4. Deploy.
+
+Locally via `docker compose up`, leave `VITE_API_BASE` unset — the Vite dev server proxies `/orders`, `/fills`, `/backtests`, `/health`, and `/ws` straight to the `backend` container, so nothing else changes.
+
 ### Unit Tests
  
 63 GoogleTest cases covering all order types, matching logic, cancel, FOK pre-check, IOC semantics, snapshot correctness, and sequence monotonicity.

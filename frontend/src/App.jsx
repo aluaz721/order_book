@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-const API = '/api';
+// In dev (docker-compose), leave VITE_API_BASE unset and requests go through
+// the Vite proxy to the `backend` container. In prod, set VITE_API_BASE to
+// the deployed backend's origin (e.g. https://order-book-backend.onrender.com).
+const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 const WS_PATH = '/ws/book';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -23,8 +26,10 @@ function useOrderBookSocket() {
   const wsRef = useRef(null);
 
   useEffect(() => {
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    const url   = `${proto}://${location.host}${WS_PATH}`;
+    const wsBase = API_BASE
+      ? API_BASE.replace(/^http/, 'ws')
+      : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
+    const url = `${wsBase}${WS_PATH}`;
 
     const connect = () => {
       const ws = new WebSocket(url);
@@ -66,7 +71,7 @@ function OrderForm({ onSubmitted }) {
     setBusy(true);
     setFlash(null);
     try {
-      const res = await fetch(`${API}/orders`, {
+      const res = await fetch(`${API_BASE}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -289,7 +294,7 @@ export default function App() {
   const { book, fills, conn } = useOrderBookSocket();
 
   const cancelOrder = useCallback(async (orderId) => {
-    await fetch(`${API}/orders/${orderId}`, { method: 'DELETE' });
+    await fetch(`${API_BASE}/orders/${orderId}`, { method: 'DELETE' });
     // snapshot will arrive via WebSocket — no manual refresh needed
   }, []);
 

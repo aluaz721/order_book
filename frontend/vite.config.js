@@ -7,10 +7,9 @@ export default defineConfig({
     port: 5173,
     host: '0.0.0.0',
     proxy: {
-      '/api': {
+      '^/(orders|fills|backtests|health)': {
         target: 'http://backend:8000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
       },
       '/ws': {
         target: 'ws://backend:8000',
