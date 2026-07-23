@@ -60,10 +60,10 @@ public:
 
     // ── OrderSource interface ─────────────────────────────────────────────────
 
-    uint64_t             next_timestamp() const noexcept override;
-    std::optional<Order> next_order(uint64_t current_time) override;
-    bool                 exhausted()      const noexcept override { return false; }
-    const std::string&   name()           const noexcept override { return name_; }
+    uint64_t                    next_timestamp() const noexcept override;
+    std::optional<SourceEvent>  next_order(uint64_t current_time) override;
+    bool                        exhausted()      const noexcept override { return false; }
+    const std::string&          name()           const noexcept override { return name_; }
 
     // Invokes strategy_callback_ and buffers returned orders.
     // Called by the engine after each BookSnapshot is emitted.

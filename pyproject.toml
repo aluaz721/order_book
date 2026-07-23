@@ -1,0 +1,37 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=3.0"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "order-book"
+version = "0.1.0"
+description = "Python bindings for the C++ limit order book engine"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { file = "LICENSE" }
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.scikit-build]
+wheel.packages = ["python/order_book"]
+cmake.build-type = "Release"
+
+[tool.scikit-build.cmake.define]
+ORDER_BOOK_BUILD_TESTS = "OFF"
+ORDER_BOOK_BUILD_BENCHMARKS = "OFF"
+ORDER_BOOK_BUILD_PYTHON = "ON"
+
+# Builds portable wheels (no compiler/CMake required for consumers) via
+# `pipx run cibuildwheel` or the GitHub Actions workflow in
+# .github/workflows/wheels.yml. Starting point only — tune per platform as
+# needed (this project requires C++17 and network access during the build
+# for CMake's FetchContent to fetch pybind11).
+[tool.cibuildwheel]
+build = "cp39-* cp310-* cp311-* cp312-* cp313-*"
+skip = "*-musllinux* *_i686 *-win32"
+test-extras = "test"
+test-command = "pytest {project}/tests"

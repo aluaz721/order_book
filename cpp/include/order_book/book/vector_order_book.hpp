@@ -78,6 +78,7 @@ public:
     void add(Order order)                                          override;
     void cancel(uint64_t order_id)                                 override;
     void execute(uint64_t order_id, uint64_t qty, uint64_t ts)    override;
+    void reduce(uint64_t order_id, uint64_t qty, uint64_t ts)     override;
     void replace(uint64_t old_order_id, Order new_order)          override;
 
     std::optional<int64_t> best_bid()     const noexcept override;

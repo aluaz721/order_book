@@ -181,57 +181,81 @@ void SimulationEngine::notify_sources(const BookSnapshot& snap,
 // ─────────────────────────────────────────────────────────────────────────────
 // dispatch()
 //
-// Routes a single order to the correct subsystem after validation.
+// Routes a single source event to the correct OrderBookInterface call (or the
+// stop manager, for STOP/STOP_LIMIT new orders):
 //
-//   STOP / STOP_LIMIT → StopOrderManager::submit()
-//   everything else   → OrderValidators::validate() → OrderBook::add()
+//   NEW_ORDER → STOP/STOP_LIMIT: StopOrderManager::submit()
+//               everything else: OrderValidators::validate() → book_->add()
+//   CANCEL    → book_->cancel(target_order_id)
+//   REDUCE    → book_->reduce(target_order_id, quantity, timestamp)
+//   EXECUTE   → book_->execute(target_order_id, quantity, timestamp)
+//   REPLACE   → book_->replace(target_order_id, order)
 //
-// Cancels submitted via InteractiveSource::submit_cancel() don't pass through
-// dispatch() — the run() loop handles them directly via book_->cancel() after
-// draining the order queue each tick. This avoids encoding a sentinel value
-// into the Order struct.
+// CANCEL/REDUCE/EXECUTE/REPLACE reference an order the book already knows
+// about (from a historical feed or the UI), so they skip OrderValidators —
+// validation only applies to brand-new orders entering the book.
 // ─────────────────────────────────────────────────────────────────────────────
 
-void SimulationEngine::dispatch(Order order) {
-    // Route stop orders before field validation — the validator doesn't
-    // handle stop/stop-limit and would reject them on the price field check.
-    if (order.type == OrderType::STOP ||
-        order.type == OrderType::STOP_LIMIT) {
-        stop_manager_->submit(std::move(order), on_ack_);
-        return;
-    }
+void SimulationEngine::dispatch(SourceEvent event) {
+    switch (event.type) {
+        case SourceEventType::NEW_ORDER: {
+            Order order = std::move(event.order);
 
-    const auto result = OrderValidators::validate(order, *book_);
-    if (!result.valid) {
-        orders_rejected_++;
-        if (on_ack_) {
-            on_ack_(AckEvent{
-                order.id,
-                order.symbol,
-                OrderStatus::REJECTED,
-                result.reason,
-                order.timestamp
-            });
+            // Route stop orders before field validation — the validator
+            // doesn't handle stop/stop-limit and would reject them on the
+            // price field check.
+            if (order.type == OrderType::STOP ||
+                order.type == OrderType::STOP_LIMIT) {
+                stop_manager_->submit(std::move(order), on_ack_);
+                return;
+            }
+
+            const auto result = OrderValidators::validate(order, *book_);
+            if (!result.valid) {
+                orders_rejected_++;
+                if (on_ack_) {
+                    on_ack_(AckEvent{
+                        order.id,
+                        order.symbol,
+                        OrderStatus::REJECTED,
+                        result.reason,
+                        order.timestamp
+                    });
+                }
+                return;
+            }
+
+            book_->add(std::move(order));
+            return;
         }
-        return;
+        case SourceEventType::CANCEL:
+            book_->cancel(event.target_order_id);
+            return;
+        case SourceEventType::REDUCE:
+            book_->reduce(event.target_order_id, event.quantity, event.timestamp);
+            return;
+        case SourceEventType::EXECUTE:
+            book_->execute(event.target_order_id, event.quantity, event.timestamp);
+            return;
+        case SourceEventType::REPLACE:
+            book_->replace(event.target_order_id, std::move(event.order));
+            return;
     }
-
-    book_->add(std::move(order));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // run()
 //
-// Main simulation loop. Processes one order per outer iteration:
+// Main simulation loop. Processes one event per outer iteration:
 //
 //   1. Pop the SourceEntry with the smallest next_timestamp from the heap.
 //   2. Re-verify the source still has something (the cached timestamp in the
 //      heap may be stale due to notify_sources() activity since last insert).
-//   3. Call next_order() and dispatch() the result.
-//   4. Drain any pending cancels from InteractiveSource (if registered).
-//   5. Re-insert the source into the heap with its updated next_timestamp.
-//   6. Fire the tick callback.
-//   7. Check termination conditions.
+//   3. Call next_order() and dispatch() the result (add/cancel/reduce/
+//      execute/replace — see SimulationEngine::dispatch()).
+//   4. Re-insert the source into the heap with its updated next_timestamp.
+//   5. Fire the tick callback.
+//   6. Check termination conditions.
 //
 // Termination:
 //   The loop exits when the heap is empty AND all non-exhausted sources have
@@ -289,10 +313,10 @@ void SimulationEngine::run() {
                 continue;
             }
 
-            // ── Step 2: Pop and dispatch the order ────────────────────────────
+            // ── Step 2: Pop and dispatch the event ────────────────────────────
 
-            auto order_opt = src->next_order(live_ts);
-            if (!order_opt) {
+            auto event_opt = src->next_order(live_ts);
+            if (!event_opt) {
                 // Source returned nullopt — spurious wakeup (atomic false
                 // positive). Re-insert if the source isn't exhausted.
                 if (!src->exhausted()) {
@@ -304,29 +328,16 @@ void SimulationEngine::run() {
                 continue;
             }
 
-            // Advance the simulation clock. Use the order's own timestamp if
+            // Advance the simulation clock. Use the event's own timestamp if
             // set; fall back to the source's queried timestamp otherwise.
-            current_time_ = (order_opt->timestamp > 0)
-                            ? order_opt->timestamp
+            current_time_ = (event_opt->timestamp > 0)
+                            ? event_opt->timestamp
                             : live_ts;
 
-            dispatch(std::move(*order_opt));
+            dispatch(std::move(*event_opt));
             orders_processed_++;
 
-            // ── Step 3: Drain pending cancels from InteractiveSource ──────────
-            //
-            // InteractiveSource has no next_cancel() in the current header, so
-            // we handle submit_cancel() by relying on the book's cancel path
-            // directly. The API layer should call book().cancel() for cancel
-            // requests, or we provide an explicit cancel endpoint. If
-            // InteractiveSource gains a next_cancel() method in future, this
-            // is where the drain loop belongs.
-            //
-            // For the MVP: cancel requests from the UI hit a dedicated FastAPI
-            // endpoint that calls engine.book().cancel(order_id) directly,
-            // bypassing the source queue entirely. No drain loop needed here.
-
-            // ── Step 4: Re-insert source with updated timestamp ───────────────
+            // ── Step 3: Re-insert source with updated timestamp ───────────────
 
             if (!src->exhausted()) {
                 const uint64_t new_ts = src->next_timestamp();
@@ -335,7 +346,7 @@ void SimulationEngine::run() {
                 }
             }
 
-            // ── Step 5: Re-insert any sources that gained work via notify ─────
+            // ── Step 4: Re-insert any sources that gained work via notify ─────
             //
             // notify_sources() is called inside on_book_update (wired in
             // wire_callbacks()), which fires inside book_->add(). At that

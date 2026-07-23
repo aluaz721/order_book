@@ -17,12 +17,13 @@ namespace order_book {
 // Thread-safe order queue for user-submitted orders from the React UI.
 //
 // Concurrency model:
-//   - submit() is called from a FastAPI request-handler thread. It acquires
-//     mutex_, pushes the order, sets has_orders_ (atomic), and returns.
-//     O(1), never blocks the HTTP handler for more than a few nanoseconds.
+//   - submit() / submit_cancel() are called from a FastAPI request-handler
+//     thread. Each acquires mutex_, pushes a SourceEvent, sets has_orders_
+//     (atomic), and returns. O(1), never blocks the HTTP handler for more
+//     than a few nanoseconds.
 //
 //   - next_order() is called from the engine's single run() thread. It
-//     acquires mutex_, pops the front order if the queue is non-empty, and
+//     acquires mutex_, pops the front event if the queue is non-empty, and
 //     releases. O(1).
 //
 //   - next_timestamp() checks has_orders_ (std::atomic<bool>) WITHOUT locking.
@@ -46,13 +47,6 @@ namespace order_book {
 // This source is never exhausted — it runs until the engine is stopped.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Plain struct representing a pending cancel request from the UI.
-// Kept separate from the Order queue so no sentinel values are needed.
-struct CancelRequest {
-    uint64_t order_id;
-    uint64_t timestamp;  // 0 = use current simulation time
-};
-
 class InteractiveSource : public OrderSource {
 public:
     explicit InteractiveSource(std::string name = "InteractiveSource");
@@ -71,10 +65,10 @@ public:
 
     // ── OrderSource interface (called from engine thread) ─────────────────────
 
-    uint64_t             next_timestamp() const noexcept override;
-    std::optional<Order> next_order(uint64_t current_time) override;
-    bool                 exhausted()      const noexcept override { return false; }
-    const std::string&   name()           const noexcept override { return name_; }
+    uint64_t                    next_timestamp() const noexcept override;
+    std::optional<SourceEvent>  next_order(uint64_t current_time) override;
+    bool                        exhausted()      const noexcept override { return false; }
+    const std::string&          name()           const noexcept override { return name_; }
 
     // InteractiveSource does not react to book updates — the UI pulls
     // snapshots via WebSocket instead. Override is intentionally a no-op.
@@ -82,21 +76,15 @@ public:
 
     // ── Query (approximate — may be stale by the time caller reads it) ───────
 
-    size_t pending_count()        const noexcept;
-    size_t pending_cancel_count() const noexcept;
-
-    // Drain one cancel request. Called by the engine after each order batch.
-    // Engine thread only.
-    std::optional<CancelRequest> next_cancel();
-    bool   is_empty()      const noexcept { return !has_orders_.load(); }
+    size_t pending_count()  const noexcept;
+    bool   is_empty()       const noexcept { return !has_orders_.load(); }
 
 private:
-    std::string              name_;
-    mutable std::mutex       mutex_;
-    std::queue<Order>         queue_;
-    std::queue<CancelRequest> cancel_queue_;
-    std::atomic<bool>        has_orders_{false};
-    std::atomic<uint64_t>    next_id_{1};    // auto-assigned IDs start at 1
+    std::string             name_;
+    mutable std::mutex      mutex_;
+    std::queue<SourceEvent> queue_;
+    std::atomic<bool>       has_orders_{false};
+    std::atomic<uint64_t>   next_id_{1};    // auto-assigned IDs start at 1
 };
 
 } // namespace order_book

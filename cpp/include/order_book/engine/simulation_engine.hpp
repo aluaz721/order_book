@@ -159,8 +159,9 @@ private:
 
     void rebuild_heap();
 
-    // Route a validated order to the book or stop manager.
-    void dispatch(Order order);
+    // Route a source event to the book (add/cancel/reduce/execute/replace)
+    // or the stop manager (STOP/STOP_LIMIT new orders).
+    void dispatch(SourceEvent event);
 
     // Wire the engine's own callbacks into the book and stop manager.
     void wire_callbacks();

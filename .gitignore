@@ -74,3 +74,9 @@ node_modules/
 .venv/
 __pycache__/
 *.pyc
+
+# Python packaging (order_book pip build/install artifacts)
+dist/
+*.egg-info/
+wheelhouse/
+.pytest_cache/

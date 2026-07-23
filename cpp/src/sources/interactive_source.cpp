@@ -15,7 +15,7 @@ InteractiveSource::InteractiveSource(std::string name)
 // submit()
 //
 // Called from the FastAPI / UI thread. Acquires the mutex only long enough to
-// push the order and update the atomic flag — O(1), non-blocking.
+// push the event and update the atomic flag — O(1), non-blocking.
 // ─────────────────────────────────────────────────────────────────────────────
 
 void InteractiveSource::submit(Order order) {
@@ -26,24 +26,20 @@ void InteractiveSource::submit(Order order) {
 
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        queue_.push(std::move(order));
+        queue_.push(SourceEvent::new_order(std::move(order)));
     }
 
     // Set after releasing the lock so the engine thread sees a consistent
-    // state: has_orders_ == true only after the order is in the queue.
+    // state: has_orders_ == true only after the event is in the queue.
     has_orders_.store(true, std::memory_order_release);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // submit_cancel()
 //
-// Cancel requests are stored in a separate cancel_queue_ so they can be
-// represented without encoding sentinel values into the Order struct.
-// The engine drains cancel_queue_ via next_cancel() after processing orders
-// each tick. Cancels submitted alongside orders in the same tick are
-// processed in submission order relative to other cancels, but always after
-// all pending orders for that tick — this mirrors real exchange semantics
-// where a cancel can't affect an order that arrived in the same batch.
+// Cancels are just another SourceEvent, queued alongside new orders in
+// submission order. The engine routes SourceEventType::CANCEL to
+// book.cancel() generically — no separate drain path needed.
 // ─────────────────────────────────────────────────────────────────────────────
 
 void InteractiveSource::submit_cancel(uint64_t          order_id,
@@ -51,25 +47,9 @@ void InteractiveSource::submit_cancel(uint64_t          order_id,
                                       uint64_t           timestamp) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        cancel_queue_.push({order_id, timestamp});
+        queue_.push(SourceEvent::cancel(order_id, timestamp));
     }
     has_orders_.store(true, std::memory_order_release);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// next_cancel()
-//
-// Called from the engine thread only. Returns the next pending cancel request,
-// or nullopt if the cancel queue is empty. Draining the cancel queue is the
-// engine's responsibility — it calls this in a loop after each order batch.
-// ─────────────────────────────────────────────────────────────────────────────
-
-std::optional<CancelRequest> InteractiveSource::next_cancel() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (cancel_queue_.empty()) return std::nullopt;
-    CancelRequest req = cancel_queue_.front();
-    cancel_queue_.pop();
-    return req;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -81,7 +61,7 @@ uint64_t InteractiveSource::next_timestamp() const noexcept {
     // A false positive (has_orders_ true but queue transiently empty) is safe:
     // next_order() will return nullopt and the engine skips this source.
     //
-    // Return 0 (lowest possible timestamp) when orders are pending so that
+    // Return 0 (lowest possible timestamp) when events are pending so that
     // interactive orders always have the highest priority in the heap — they
     // represent "right now" relative to any historical or strategy source.
     if (has_orders_.load(std::memory_order_acquire)) {
@@ -90,34 +70,33 @@ uint64_t InteractiveSource::next_timestamp() const noexcept {
     return std::numeric_limits<uint64_t>::max();
 }
 
-std::optional<Order> InteractiveSource::next_order(uint64_t current_time) {
+std::optional<SourceEvent> InteractiveSource::next_order(uint64_t current_time) {
     std::lock_guard<std::mutex> lock(mutex_);
 
     if (queue_.empty()) {
         // Update atomic — queue may have been drained by a prior call.
-        // Only clear has_orders_ if cancel_queue_ is also empty so the engine
-        // still comes back to drain pending cancels.
-        if (cancel_queue_.empty()) {
-            has_orders_.store(false, std::memory_order_release);
-        }
+        has_orders_.store(false, std::memory_order_release);
         return std::nullopt;
     }
 
-    Order order = std::move(queue_.front());
+    SourceEvent event = std::move(queue_.front());
     queue_.pop();
 
     // Assign simulation time if the UI didn't know the clock.
-    if (order.timestamp == 0) {
-        order.timestamp = current_time;
+    if (event.timestamp == 0) {
+        event.timestamp = current_time;
+        if (event.type == SourceEventType::NEW_ORDER) {
+            event.order.timestamp = current_time;
+        }
     }
 
     // Update atomic only after the pop — the engine may call next_timestamp()
     // from another thread between ticks.
-    if (queue_.empty() && cancel_queue_.empty()) {
+    if (queue_.empty()) {
         has_orders_.store(false, std::memory_order_release);
     }
 
-    return order;
+    return event;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -127,11 +106,6 @@ std::optional<Order> InteractiveSource::next_order(uint64_t current_time) {
 size_t InteractiveSource::pending_count() const noexcept {
     std::lock_guard<std::mutex> lock(mutex_);
     return queue_.size();
-}
-
-size_t InteractiveSource::pending_cancel_count() const noexcept {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return cancel_queue_.size();
 }
 
 } // namespace order_book

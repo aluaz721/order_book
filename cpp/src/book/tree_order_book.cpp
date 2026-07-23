@@ -258,16 +258,80 @@ void TreeOrderBook::execute(uint64_t order_id, uint64_t qty, uint64_t timestamp)
         }
         order_map_.erase(map_it);
     } else {
-        // Partial feed fill — reduce quantity in place.
+        // Partial feed fill — reduce quantity in place. Note: uses the
+        // iterator-based reduce(), not reduce_front() — order_id may not be
+        // at the front of this level's FIFO queue.
         if (loc.side == Side::BID) {
             auto level_it = bids_.find(loc.price);
             if (level_it != bids_.end()) {
-                level_it->second.reduce_front(fill_qty);
+                level_it->second.reduce(loc.it, fill_qty);
             }
         } else {
             auto level_it = asks_.find(loc.price);
             if (level_it != asks_.end()) {
-                level_it->second.reduce_front(fill_qty);
+                level_it->second.reduce(loc.it, fill_qty);
+            }
+        }
+    }
+
+    emit_snapshot(timestamp);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// reduce()
+//
+// Feed-driven partial size reduction WITHOUT a trade (e.g. ITCH Order Cancel
+// message). Distinct from execute(): fires on_cancel instead of on_fill, and
+// the order keeps its place in time priority if it isn't fully consumed.
+// ─────────────────────────────────────────────────────────────────────────────
+
+void TreeOrderBook::reduce(uint64_t order_id, uint64_t qty, uint64_t timestamp) {
+    auto map_it = order_map_.find(order_id);
+    if (map_it == order_map_.end()) {
+        return; // Unknown order — no-op.
+    }
+
+    const OrderLocation& loc = map_it->second;
+
+    uint64_t reduce_qty      = std::min(qty, loc.it->quantity_remaining);
+    uint64_t remaining_after = loc.it->quantity_remaining - reduce_qty;
+
+    if (callbacks_.on_cancel) {
+        callbacks_.on_cancel(CancelEvent{
+            order_id, symbol_, loc.side, loc.price,
+            CancelReason::CLIENT_REQUEST,
+            remaining_after,
+            timestamp,
+            ++sequence_
+        });
+    }
+
+    if (remaining_after == 0) {
+        // Fully consumed — remove from level and order_map.
+        if (loc.side == Side::BID) {
+            auto level_it = bids_.find(loc.price);
+            if (level_it != bids_.end()) {
+                level_it->second.erase(loc.it);
+                if (level_it->second.empty()) bids_.erase(level_it);
+            }
+        } else {
+            auto level_it = asks_.find(loc.price);
+            if (level_it != asks_.end()) {
+                level_it->second.erase(loc.it);
+                if (level_it->second.empty()) asks_.erase(level_it);
+            }
+        }
+        order_map_.erase(map_it);
+    } else {
+        if (loc.side == Side::BID) {
+            auto level_it = bids_.find(loc.price);
+            if (level_it != bids_.end()) {
+                level_it->second.reduce(loc.it, reduce_qty);
+            }
+        } else {
+            auto level_it = asks_.find(loc.price);
+            if (level_it != asks_.end()) {
+                level_it->second.reduce(loc.it, reduce_qty);
             }
         }
     }

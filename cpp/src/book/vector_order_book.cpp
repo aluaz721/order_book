@@ -38,6 +38,7 @@ VectorOrderBook::VectorOrderBook(Config                             config,
 void VectorOrderBook::add(Order)                                     { throw std::logic_error(NOT_IMPLEMENTED); }
 void VectorOrderBook::cancel(uint64_t)                               { throw std::logic_error(NOT_IMPLEMENTED); }
 void VectorOrderBook::execute(uint64_t, uint64_t, uint64_t)          { throw std::logic_error(NOT_IMPLEMENTED); }
+void VectorOrderBook::reduce(uint64_t, uint64_t, uint64_t)           { throw std::logic_error(NOT_IMPLEMENTED); }
 void VectorOrderBook::replace(uint64_t, Order)                       { throw std::logic_error(NOT_IMPLEMENTED); }
 
 std::optional<int64_t> VectorOrderBook::best_bid()     const noexcept { return std::nullopt; }

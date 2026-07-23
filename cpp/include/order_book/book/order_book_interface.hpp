@@ -84,6 +84,14 @@ public:
     // If qty >= resting quantity, the order is fully removed.
     virtual void execute(uint64_t order_id, uint64_t qty, uint64_t timestamp) = 0;
 
+    // Reduce a resting order's quantity WITHOUT a trade, keeping its place in
+    // the price-time priority queue (e.g. an ITCH Order Cancel message, where
+    // a participant shrinks a resting order rather than fully withdrawing it).
+    // Distinct from execute(): fires on_cancel, not on_fill — no counterparty
+    // was involved. If qty >= resting quantity, the order is fully removed
+    // (equivalent to cancel()). No-op if the order is unknown.
+    virtual void reduce(uint64_t order_id, uint64_t qty, uint64_t timestamp) = 0;
+
     // Atomically cancel old_order_id and add new_order. The new order loses
     // time priority — it goes to the back of its price level queue.
     // Equivalent to cancel() + add() but emits a single on_book_update.

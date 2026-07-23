@@ -47,10 +47,23 @@ cpp/                        # C++20 engine — compiled as a shared library
     sources/                # OrderSource interface: InteractiveSource, HistoricalReplayer, StrategySource
     engine/                 # SimulationEngine — priority-queue merge of all sources
   src/                      # Implementations corresponding to each header above
-  tests/                    # GoogleTest suite (63 tests)
+  tests/                    # GoogleTest suite (67 tests)
   benchmarks/               # Google Benchmark suite; output consumed by scripts/plot_benchmarks.py
  
+bindings/python/            # pybind11 module source (order_book_bindings.cpp), compiled into
+                            #   python/order_book/_order_book.*.so at build time
+ 
+tests/                      # pytest smoke tests for the order_book Python package
+ 
+pyproject.toml              # scikit-build-core config — `pip install .` builds the pybind11 extension
+ 
 python/
+  order_book/               # The importable Python package (see "Python Library" above)
+    __init__.py             #   re-exports the compiled _order_book submodule at the top level
+    _order_book.pyi         #   type stub for the compiled extension (regenerate via pybind11-stubgen)
+    py.typed                #   PEP 561 marker
+    features/
+      microstructure.py     #   pure functions over BookSnapshot/FillEvent — no live book needed
   backend/
     app/                    # FastAPI server: REST endpoints + WebSocket book stream
   .venv/
@@ -65,6 +78,8 @@ docs/
   bench_raw.json            # Raw Google Benchmark JSON output
   bench_figures/            # Generated plots (latency histograms, throughput, CDFs)
   dashboard.png             # Dashboard screenshot
+ 
+.github/workflows/wheels.yml  # cibuildwheel — builds portable wheels on tags or manual trigger
 ```
 
 ---
@@ -141,6 +156,81 @@ cbs.on_ack         = [](const AckEvent&)     { /* once per submitted order */ };
 cbs.on_book_update = [](const BookSnapshot&) { /* after every state change */ };
 ```
  
+---
+
+## Python Library
+
+The C++ engine is importable as a Python package (`order_book`) via [pybind11](bindings/python/order_book_bindings.cpp), built with [scikit-build-core](https://scikit-build-core.readthedocs.io/) so a normal `pip install` compiles the extension for you — no separate CMake invocation needed. Check out `order_book_demo.ipynb` in python/ to see the Python library in use.
+
+**Install**
+
+```bash
+pip install .                                          # from the repo root
+pip install "order-book @ git+https://github.com/aluaz721/order-book.git"  # as a dependency elsewhere
+```
+
+For local development against another project (e.g. a backtesting library depending on this one), install it editable so changes rebuild without reinstalling:
+
+```bash
+pip install -e . --no-build-isolation
+```
+
+`order_book` is a real Python package (`python/order_book/`): the compiled pybind11 extension lives inside it as the private `_order_book` submodule and is re-exported at the top level, alongside pure-Python additions like `order_book.features`. Type stubs (`_order_book.pyi` + a `py.typed` marker) ship in the wheel next to the compiled extension, so IDEs and mypy/pyright get full signatures out of the box. Regenerate the stub after changing the bindings with `pybind11-stubgen order_book._order_book -o <tmp-dir>` and copy the result over `python/order_book/_order_book.pyi`.
+
+**Quickstart**
+
+```python
+import order_book as ob
+
+book = ob.TreeOrderBook("AAPL", ob.FIFOMatcher())
+
+book.add(ob.Order(id=1, symbol="AAPL", side=ob.Side.BID, type=ob.OrderType.LIMIT,
+                  price=ob.to_basis_points(150.00), quantity=100, timestamp=1))
+book.add(ob.Order(id=2, symbol="AAPL", side=ob.Side.ASK, type=ob.OrderType.LIMIT,
+                  price=ob.to_basis_points(150.00), quantity=40, timestamp=2))
+
+print(book.best_bid(), book.total_bid_qty())  # 1500000 60
+```
+
+**Replaying historical data** — `HistoricalReplayer` reads NASDAQ ITCH 5.0 files (the flat, length-prefixed framing used by NASDAQ's downloadable samples) and feeds them through `SimulationEngine` in timestamp order:
+
+```python
+config = ob.SimulationConfig()
+config.symbol = "AAPL"
+
+engine = ob.SimulationEngine(config, ob.TreeOrderBook("AAPL", ob.FIFOMatcher()))
+engine.set_fill_callback(lambda fill: print(fill.fill_price, fill.fill_quantity))
+
+replay_config = ob.HistoricalReplayerConfig()
+replay_config.path = "01302020.NASDAQ_ITCH50"
+replay_config.symbol_filter = "AAPL"  # empty = replay every symbol in the file
+engine.add_source(ob.HistoricalReplayer(replay_config))
+
+engine.run()
+print(engine.orders_processed(), engine.book().best_bid())
+```
+
+**Ownership note:** objects passed into another object's constructor or `add_source()`/`set_matching_algorithm()` (a matcher into a book, a book into an engine, a source into an engine) transfer ownership via `unique_ptr`, matching the C++ API. The original Python object becomes an empty shell afterwards — use the owner's accessors instead (`engine.book()`, `engine.historical_replayer()`), not the variable you originally constructed.
+
+**Microstructure features** — `order_book.features.microstructure` computes standard order-book statistics directly from a `BookSnapshot`/`FillEvent`, with no live book or engine reference required. This is intentionally scoped to pure functions of book/fill state (mid price, spread, queue-imbalance-weighted microprice, order book imbalance, VWAP-to-fill, price impact, effective spread) — strategy logic, ML models, and alternative data (sentiment, macro) are out of scope for this repo and belong in a downstream backtesting/analytics project instead:
+
+```python
+from order_book.features import microstructure as ms
+
+snap = book.snapshot()
+ms.mid_price(snap)                              # simple mid
+ms.micro_price(snap)                             # queue-imbalance-weighted mid
+ms.order_book_imbalance(snap, max_levels=5)      # (bid_depth - ask_depth) / total, top 5 levels
+ms.price_impact(snap, ob.Side.BID, quantity=500) # est. slippage for a hypothetical market buy
+```
+
+**Python tests**
+
+```bash
+pip install -e ".[test]" --no-build-isolation
+pytest
+```
+
 ---
  
 ## Build, Run, and Visualize

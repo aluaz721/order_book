@@ -71,6 +71,16 @@ void LinkedListPriceLevel::erase(Iterator it) {
     orders_.erase(it);
 }
 
+// O(1) reduce an arbitrary order's quantity given a stored iterator.
+void LinkedListPriceLevel::reduce(Iterator it, uint64_t qty) {
+    if (qty > it->quantity_remaining) {
+        throw std::logic_error(
+            "LinkedListPriceLevel::reduce(): qty exceeds order quantity");
+    }
+    it->quantity_remaining -= qty;
+    total_qty_             -= qty;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Query
 // ─────────────────────────────────────────────────────────────────────────────

@@ -73,6 +73,15 @@ public:
     // which already has the iterator from order_map_.
     void erase(Iterator it);
 
+    // O(1) reduce an ARBITRARY order's quantity by `qty`, given a stored
+    // iterator. Unlike reduce_front(), this does not require the target to
+    // be at the front of the queue — used by TreeOrderBook::execute() and
+    // TreeOrderBook::reduce() for feed-driven updates that reference a
+    // resting order by ID rather than by queue position (e.g. an ITCH
+    // Executed or Order Cancel message against an order that isn't first
+    // in line). Precondition: qty <= it->quantity_remaining.
+    void reduce(Iterator it, uint64_t qty);
+
 private:
     int64_t   price_;
     uint64_t  total_qty_ = 0;
