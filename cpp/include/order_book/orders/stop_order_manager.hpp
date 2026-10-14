@@ -37,15 +37,17 @@ namespace order_book {
 //                  Best trigger candidate = highest stop price = map::begin().
 //
 // Trigger semantics:
-//   After every fill in the OrderBook, on_trade() is called with the fill
-//   price. StopOrderManager scans the relevant stop tree from the trigger-
-//   closest level inward:
+//   Every fill in the OrderBook is reported with record_trade(); once the
+//   book operation that produced it has returned, drain_triggers() scans the
+//   relevant stop tree from the trigger-closest level inward:
 //     - stop_buys  triggered if fill_price >= stop_price
 //     - stop_sells triggered if fill_price <= stop_price
-//   Triggered stops are converted and submitted to the OrderBook immediately.
-//   The converted orders may produce additional fills, which may trigger
-//   additional stops — this cascade is handled iteratively, not recursively,
-//   to avoid stack overflow on pathological inputs.
+//   Triggered stops are converted and submitted to the OrderBook there. The
+//   converted orders may produce additional fills, which may trigger
+//   additional stops — this cascade is handled iteratively inside the one
+//   draining loop, not recursively, both to avoid stack overflow on
+//   pathological inputs and because re-entering the book mid-match would
+//   corrupt the sweep in progress.
 //
 // Converted order types:
 //   STOP       → MARKET order at the time of trigger
@@ -84,10 +86,30 @@ public:
     void cancel(uint64_t order_id, uint64_t timestamp);
 
     // ── Trigger check ─────────────────────────────────────────────────────────
+    //
+    // Triggering is split into "record" and "drain" because a triggered stop
+    // is submitted to the book, and the trade that triggered it is reported
+    // from inside a book operation. Submitting from the fill callback would
+    // re-enter OrderBookInterface::add() while it is still sweeping price
+    // levels — the outer sweep would then prune a level the nested call had
+    // already erased. So trades are recorded as they are reported and acted
+    // on once the book operation has returned.
 
-    // Called by SimulationEngine after every FillEvent from the OrderBook.
-    // Checks both stop trees and triggers all orders whose conditions are now
-    // met. Handles cascades iteratively.
+    // Record a trade for trigger evaluation. Submits nothing, touches no book
+    // state — safe to call from an on_fill callback.
+    void record_trade(int64_t trade_price, uint64_t timestamp);
+
+    // Evaluate every recorded trade and submit the orders their stops convert
+    // into. Call only when the book is not mid-operation, i.e. after
+    // add() / cancel() / execute() / replace() has returned.
+    //
+    // The converted orders may themselves produce fills, which record further
+    // trades; those are drained by the same call, so a cascade of stops is
+    // processed iteratively here rather than recursively through the book.
+    void drain_triggers();
+
+    // record_trade() + drain_triggers(). Convenience for callers that are not
+    // inside a book callback.
     void on_trade(int64_t trade_price, uint64_t timestamp);
 
     // ── Query ─────────────────────────────────────────────────────────────────
@@ -110,13 +132,21 @@ private:
     using StopBuyMap  = std::map<int64_t, StopQueue>;                     // ascending
     using StopSellMap = std::map<int64_t, StopQueue, std::greater<int64_t>>; // descending
 
+    // A trade reported by the book, awaiting trigger evaluation.
+    struct PendingTrade {
+        int64_t  price;
+        uint64_t timestamp;
+    };
+
     // ── Internal helpers ──────────────────────────────────────────────────────
 
-    // Convert a triggered stop order to a live order and submit to book_.
-    void trigger(Order& stop_order, int64_t trade_price, uint64_t timestamp);
+    // Trigger every stop whose condition is met by one trade price.
+    void trigger_for_trade(int64_t trade_price, uint64_t timestamp);
 
-    // Trigger all stops in a queue at a given price level.
-    void trigger_queue(StopQueue& queue, int64_t trade_price, uint64_t timestamp);
+    // Convert a triggered stop order to a live order and submit to book_.
+    // Precondition: the caller has already removed `stop_order` from both the
+    // stop tree and stop_map_ — see the definition for why.
+    void trigger(Order& stop_order, int64_t trade_price, uint64_t timestamp);
 
     // ── Members ───────────────────────────────────────────────────────────────
 
@@ -134,6 +164,11 @@ private:
         int64_t price;     // stop (trigger) price
     };
     std::unordered_map<uint64_t, StopLocation> stop_map_;
+
+    // Trades recorded but not yet evaluated, and the guard that keeps a
+    // cascade in the single draining loop instead of nesting.
+    std::vector<PendingTrade> pending_trades_;
+    bool                      draining_ = false;
 };
 
 } // namespace order_book

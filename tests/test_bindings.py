@@ -131,3 +131,260 @@ def test_historical_replayer_missing_file_raises(tmp_path):
 
     with pytest.raises(RuntimeError):
         ob.HistoricalReplayer(replay_config)
+
+
+# ── InteractiveSource / StopOrderManager / StrategySource ────────────────────
+#
+# These three were implemented in C++ but unbound, which left STOP and
+# STOP_LIMIT unreachable from Python: they are in the OrderType enum, but
+# TreeOrderBook.add() rejects them and only SimulationEngine.dispatch() routes
+# them to the StopOrderManager. The tests below cover the bound surface that
+# closes that gap.
+
+def _engine(symbol="AAPL", order_id_start=1_000_000):
+    config = ob.SimulationConfig()
+    config.symbol = symbol
+    config.order_id_start = order_id_start
+    return ob.SimulationEngine(
+        config, ob.TreeOrderBook(symbol, ob.FIFOMatcher()))
+
+
+def test_stop_order_rejected_by_the_book_directly():
+    # The reason the stop path has to exist: the book itself refuses stops.
+    book = ob.TreeOrderBook("AAPL", ob.FIFOMatcher())
+    with pytest.raises(RuntimeError, match="StopOrderManager"):
+        book.add(ob.Order(id=1, symbol="AAPL", side=ob.Side.ASK,
+                          type=ob.OrderType.STOP, price=1_490_000,
+                          quantity=50, timestamp=1))
+
+
+def test_interactive_source_queues_and_drains():
+    engine = _engine()
+    engine.add_source(ob.InteractiveSource())
+    ui = engine.interactive_source()
+
+    assert ui is not None
+    assert ui.is_empty()
+    assert not ui.exhausted()        # a live source is never exhausted
+
+    ui.submit(ob.Order(id=1, symbol="AAPL", side=ob.Side.BID,
+                       type=ob.OrderType.LIMIT, price=1_500_000,
+                       quantity=100, timestamp=1))
+    assert ui.pending_count() == 1
+
+    engine.run()
+    assert ui.pending_count() == 0
+    assert engine.book().total_bid_qty() == 100
+
+    ui.submit_cancel(1, "AAPL")
+    engine.run()
+    assert not engine.book().has_order(1)
+
+
+def test_interactive_source_assigns_missing_order_ids():
+    engine = _engine()
+    engine.add_source(ob.InteractiveSource())
+    acks = []
+    engine.set_ack_callback(acks.append)
+
+    engine.interactive_source().submit(
+        ob.Order(id=0, symbol="AAPL", side=ob.Side.BID,
+                 type=ob.OrderType.LIMIT, price=1_500_000, quantity=10))
+    engine.run()
+
+    assert engine.orders_rejected() == 0
+    assert len(acks) == 1 and acks[0].order_id != 0
+
+
+def test_stop_order_triggers_through_the_engine():
+    engine = _engine()
+    engine.add_source(ob.InteractiveSource())
+    ui = engine.interactive_source()
+
+    fills, triggers, acks = [], [], []
+    engine.set_fill_callback(fills.append)
+    engine.set_trigger_callback(triggers.append)
+    engine.set_ack_callback(acks.append)
+
+    def submit(order):
+        ui.submit(order)
+        engine.run()
+
+    # Two-sided market, then a sell stop below it.
+    submit(ob.Order(id=1, symbol="AAPL", side=ob.Side.BID,
+                    type=ob.OrderType.LIMIT, price=1_495_000, quantity=100))
+    submit(ob.Order(id=2, symbol="AAPL", side=ob.Side.ASK,
+                    type=ob.OrderType.LIMIT, price=1_505_000, quantity=100))
+    submit(ob.Order(id=3, symbol="AAPL", side=ob.Side.ASK,
+                    type=ob.OrderType.STOP, price=1_490_000, quantity=50))
+
+    stops = engine.stop_manager()
+    assert stops.pending_stop_count() == 1
+    assert stops.has_stop(3)
+    assert stops.nearest_stop_sell() == 1_490_000
+    assert acks[-1].status == ob.OrderStatus.PENDING_TRIGGER
+    # A pending stop is invisible in the book.
+    assert engine.book().total_ask_qty() == 100
+    assert not engine.book().has_order(3)
+
+    # Sweep down through the stop price: fills at 149.50 then 148.50, the
+    # second of which fires the stop.
+    submit(ob.Order(id=4, symbol="AAPL", side=ob.Side.BID,
+                    type=ob.OrderType.LIMIT, price=1_485_000, quantity=200))
+    submit(ob.Order(id=5, symbol="AAPL", side=ob.Side.ASK,
+                    type=ob.OrderType.LIMIT, price=1_480_000, quantity=150))
+
+    assert len(triggers) == 1
+    assert triggers[0].stop_order_id == 3
+    assert triggers[0].converted_to == ob.OrderType.MARKET
+    assert triggers[0].triggered_order_id >= 1_000_000   # engine's id counter
+    assert engine.stops_triggered() == 1
+    assert stops.pending_stop_count() == 0
+
+    # The converted MARKET sell traded against the remaining 148.50 bid.
+    triggered = [f for f in fills
+                 if f.aggressive_order_id == triggers[0].triggered_order_id]
+    assert len(triggered) == 1
+    assert triggered[0].fill_quantity == 50
+    assert triggered[0].fill_price == 1_485_000
+
+
+def test_pending_stop_can_be_cancelled_through_the_stop_manager():
+    engine = _engine()
+    engine.add_source(ob.InteractiveSource())
+    cancels = []
+    engine.set_cancel_callback(cancels.append)
+
+    engine.interactive_source().submit(
+        ob.Order(id=1, symbol="AAPL", side=ob.Side.ASK,
+                 type=ob.OrderType.STOP, price=1_490_000, quantity=50))
+    engine.run()
+    assert engine.stop_manager().pending_stop_count() == 1
+
+    engine.stop_manager().cancel(1, 0)
+    assert engine.stop_manager().pending_stop_count() == 0
+    assert not engine.stop_manager().has_stop(1)
+    assert len(cancels) == 1
+    assert cancels[0].reason == ob.CancelReason.STOP_CANCELLED
+
+
+def test_stop_manager_can_drive_a_bare_book():
+    # Without an engine, the caller owns the record/drain contract: record the
+    # trade from on_fill (the book is mid-match there), drain once add()
+    # returns.
+    triggers = []
+    fills = []
+
+    cbs = ob.OrderBookCallbacks()
+    book = ob.TreeOrderBook("AAPL", ob.FIFOMatcher(), cbs)
+    stops = ob.StopOrderManager(book, on_trigger=triggers.append)
+
+    def on_fill(fill):
+        fills.append(fill)
+        stops.record_trade(fill.fill_price, fill.timestamp)
+
+    cbs.on_fill = on_fill
+    book.set_callbacks(cbs)
+
+    stops.submit(ob.Order(id=1, symbol="AAPL", side=ob.Side.ASK,
+                          type=ob.OrderType.STOP, price=1_490_000, quantity=50))
+    assert stops.pending_stop_count() == 1
+
+    # Resting bids at 149.00 and 148.00; a sell into the first trades at
+    # 149.00, which is at the stop price.
+    book.add(ob.Order(id=2, symbol="AAPL", side=ob.Side.BID,
+                      type=ob.OrderType.LIMIT, price=1_490_000, quantity=100))
+    book.add(ob.Order(id=3, symbol="AAPL", side=ob.Side.BID,
+                      type=ob.OrderType.LIMIT, price=1_480_000, quantity=100))
+    book.add(ob.Order(id=4, symbol="AAPL", side=ob.Side.ASK,
+                      type=ob.OrderType.LIMIT, price=1_490_000, quantity=100))
+    stops.drain_triggers()
+
+    assert len(triggers) == 1
+    assert stops.pending_stop_count() == 0
+    # The stop's converted MARKET sell took the 148.00 bid.
+    assert fills[-1].fill_price == 1_480_000
+    assert fills[-1].fill_quantity == 50
+    # The book survived the cascade with consistent bookkeeping.
+    assert book.total_bid_qty() == 50
+    assert book.bid_depth() == 1
+
+
+def test_strategy_source_quotes_from_a_python_callback():
+    engine = _engine()
+    engine.add_source(ob.InteractiveSource())
+
+    invocations = []
+
+    def strategy(snapshot, timestamp):
+        invocations.append(timestamp)
+        if len(invocations) > 1 or not snapshot.asks:
+            return []
+        # Join the book one cent inside the best ask.
+        return [ob.Order(id=7_001, symbol="AAPL", side=ob.Side.BID,
+                         type=ob.OrderType.LIMIT,
+                         price=snapshot.asks[0].price - 1_000,
+                         quantity=25, timestamp=timestamp)]
+
+    engine.add_source(ob.StrategySource(strategy))
+    source = engine.strategy_source()
+    assert source is not None
+
+    engine.interactive_source().submit(
+        ob.Order(id=1, symbol="AAPL", side=ob.Side.ASK,
+                 type=ob.OrderType.LIMIT, price=1_500_000, quantity=100))
+    engine.run()
+
+    assert invocations                         # the callback ran
+    assert source.total_orders_submitted() == 1
+    # Buffered during the ask's book update, dispatched on a later tick.
+    assert engine.book().has_order(7_001)
+    assert engine.book().best_bid() == 1_499_000
+
+
+def test_engine_source_heap_stays_bounded():
+    engine = _engine()
+    engine.add_source(ob.InteractiveSource())
+    engine.add_source(ob.StrategySource(lambda snapshot, ts: []))
+
+    ui = engine.interactive_source()
+    for i in range(1, 201):
+        ui.submit(ob.Order(id=i, symbol="AAPL", side=ob.Side.BID,
+                           type=ob.OrderType.LIMIT, price=1_400_000,
+                           quantity=1, timestamp=i))
+    engine.run()
+
+    assert engine.orders_processed() == 200
+    assert engine.heap_size() <= 5
+
+
+# ── Validators ───────────────────────────────────────────────────────────────
+
+def test_validators_report_the_same_verdicts_the_engine_uses():
+    book = ob.TreeOrderBook("AAPL", ob.FIFOMatcher())
+    book.add(ob.Order(id=1, symbol="AAPL", side=ob.Side.ASK,
+                      type=ob.OrderType.LIMIT, price=1_500_000, quantity=40))
+
+    ok = ob.validators.validate_fields(
+        ob.Order(id=2, symbol="AAPL", side=ob.Side.BID,
+                 type=ob.OrderType.LIMIT, price=1_500_000, quantity=10))
+    assert ok.valid and bool(ok) and ok.reason == ""
+
+    no_id = ob.validators.validate_fields(
+        ob.Order(id=0, symbol="AAPL", side=ob.Side.BID,
+                 type=ob.OrderType.LIMIT, price=1_500_000, quantity=10))
+    assert not no_id.valid and "id" in no_id.reason
+
+    # FOK for more than the book holds.
+    fok = ob.validators.validate_fok(
+        ob.Order(id=3, symbol="AAPL", side=ob.Side.BID,
+                 type=ob.OrderType.FILL_OR_KILL, price=1_500_000,
+                 quantity=100), book)
+    assert not fok.valid and "shortfall" in fok.reason
+
+    # A sell stop has to sit below the market, and there is no bid here, so
+    # the last trade price is the reference — still none, so it passes.
+    stop = ob.validators.validate(
+        ob.Order(id=4, symbol="AAPL", side=ob.Side.ASK,
+                 type=ob.OrderType.STOP, price=1_490_000, quantity=10), book)
+    assert stop.valid

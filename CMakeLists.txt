@@ -47,9 +47,17 @@ if(ORDER_BOOK_BUILD_TESTS)
   add_executable(test_historical_replayer cpp/tests/sources/test_historical_replayer.cpp)
   target_link_libraries(test_historical_replayer PRIVATE order_book GTest::gtest_main)
 
+  add_executable(test_stop_order_manager cpp/tests/orders/test_stop_order_manager.cpp)
+  target_link_libraries(test_stop_order_manager PRIVATE order_book GTest::gtest_main)
+
+  add_executable(test_simulation_engine cpp/tests/engine/test_simulation_engine.cpp)
+  target_link_libraries(test_simulation_engine PRIVATE order_book GTest::gtest_main)
+
   include(GoogleTest)
   gtest_discover_tests(test_tree_order_book)
   gtest_discover_tests(test_historical_replayer)
+  gtest_discover_tests(test_stop_order_manager)
+  gtest_discover_tests(test_simulation_engine)
 endif()
 
 if(ORDER_BOOK_BUILD_BENCHMARKS)

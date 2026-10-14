@@ -1,20 +1,42 @@
 """
-EngineBridge — in-memory matching engine.
+EngineBridge — adapter between the HTTP/WebSocket API and the C++ engine.
 
-Implements price-time priority FIFO matching so the dashboard is fully
-functional before pybind11 is wired in.  Swap out _match() and the data
-structures for C++ calls when the bindings are ready; the WebSocket and
-REST surface above stay identical.
+Every order submitted through this API is matched by the real `TreeOrderBook`
+from the compiled `order_book` extension (see bindings/python/). This module
+owns no matching logic of its own; it is a translation layer with three jobs:
+
+  1. Vocabulary.   The wire format speaks "buy"/"sell", "ioc", and float
+                   dollars. The engine speaks Side.BID, OrderType, and int64
+                   basis points. Conversion happens here and nowhere else.
+
+  2. Serialisation. OrderBookInterface is explicitly NOT thread-safe (see
+                   order_book_interface.hpp) and expects a single caller.
+                   FastAPI runs sync endpoints in a threadpool, so every
+                   engine call is serialised under `_lock`.
+
+  3. Projection.   The engine stores only what matching needs: price, side,
+                   quantity, time priority. The dashboard also wants
+                   submission timestamps, the original order type, and which
+                   order IDs sit at each level — none of which the engine
+                   models, and `has_order()` is only a bool. `_meta` is a
+                   projection of exactly that extra metadata, rebuilt from the
+                   engine's own fill/cancel callback stream so it cannot
+                   drift silently.
+
+Where a number exists in both places, the engine's value wins: level prices,
+quantities and order counts are read from `book.snapshot(-1)`, never summed
+from the projection.
 """
 
 import asyncio
 import json
+import threading
 import time
 import uuid
-from collections import defaultdict
-from typing import Any, Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set
 
-from fastapi import WebSocket, WebSocketDisconnect
+import order_book as ob
+from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
 from .models import (
     BacktestRequest,
@@ -29,78 +51,252 @@ from .models import (
     RestingOrder,
 )
 
+# ── Wire vocabulary → engine vocabulary ───────────────────────────────────────
 
-# ── Internal order representation ─────────────────────────────────────────────
+_SIDE_TO_ENGINE = {"buy": ob.Side.BID, "sell": ob.Side.ASK}
+_SIDE_TO_WIRE = {ob.Side.BID: "buy", ob.Side.ASK: "sell"}
 
-class _Order:
-    __slots__ = ("id", "side", "price", "quantity", "orig_quantity",
-                 "order_type", "symbol", "seq", "created_at")
+# The UI offers these four. The engine also implements MARKET_LIMIT, STOP and
+# STOP_LIMIT; stops are deliberately absent here because they must be routed
+# through StopOrderManager, which has no Python binding yet — TreeOrderBook.add()
+# throws on them by design. See README "Known gaps".
+_TYPE_TO_ENGINE = {
+    "limit": ob.OrderType.LIMIT,
+    "market": ob.OrderType.MARKET,
+    "ioc": ob.OrderType.IMMEDIATE_OR_CANCEL,
+    "fok": ob.OrderType.FILL_OR_KILL,
+}
 
-    def __init__(self, id_: int, side: str, price: float, quantity: int,
-                 order_type: str, symbol: str, seq: int, created_at: str):
-        self.id            = id_
-        self.side          = side          # "buy" | "sell"
-        self.price         = price
-        self.quantity      = quantity
+# Engine cancel reasons, phrased for a human reading a flash message.
+_CANCEL_BLURB = {
+    ob.CancelReason.FOK_FAILED: "cancelled — fill-or-kill could not be filled in full",
+    ob.CancelReason.IOC_EXPIRED: "immediate-or-cancel: remainder cancelled",
+    ob.CancelReason.MARKET_NO_LIQUIDITY: "cancelled — insufficient liquidity",
+    ob.CancelReason.CLIENT_REQUEST: "cancelled at client request",
+    ob.CancelReason.RISK_REJECTED: "rejected by risk checks",
+    ob.CancelReason.STOP_CANCELLED: "stop order cancelled",
+    ob.CancelReason.SELF_TRADE: "cancelled — would have self-traded",
+}
+
+# Cancel reasons that mean "the order is gone for good", as opposed to a
+# partial reduction that leaves the order resting.
+_TERMINAL_REASONS = frozenset(_CANCEL_BLURB)
+
+
+# ── Per-order metadata the engine doesn't model ───────────────────────────────
+
+class _OrderMeta:
+    """UI-facing metadata for one live order, plus its remaining quantity.
+
+    `remaining` is maintained from FillEvent/CancelEvent callbacks rather than
+    queried, because the engine exposes per-order existence (`has_order`) but
+    not per-order size.
+    """
+
+    __slots__ = ("order_id", "side", "price", "order_type", "symbol",
+                 "created_at", "orig_quantity", "remaining")
+
+    def __init__(self, order_id: int, side: str, price: float, order_type: str,
+                 symbol: str, created_at: str, quantity: int):
+        self.order_id = order_id
+        self.side = side
+        self.price = price
+        self.order_type = order_type
+        self.symbol = symbol
+        self.created_at = created_at
         self.orig_quantity = quantity
-        self.order_type    = order_type
-        self.symbol        = symbol
-        self.seq           = seq           # insertion sequence for FIFO
-        self.created_at    = created_at
+        self.remaining = quantity
 
 
-# ── Engine ────────────────────────────────────────────────────────────────────
+class _Outcome:
+    """Events the engine emitted while processing one submit_order call.
+
+    Callbacks fire synchronously inside `book.add()`, so this is filled in
+    before `add()` returns and read immediately afterwards — always under
+    `_lock`, so one in-flight submission at a time.
+    """
+
+    __slots__ = ("order_id", "filled", "cancel_reason", "ack_status")
+
+    def __init__(self, order_id: int):
+        self.order_id = order_id
+        self.filled = 0
+        self.cancel_reason: Optional[ob.CancelReason] = None
+        self.ack_status: Optional[ob.OrderStatus] = None
+
+
+# ── Bridge ────────────────────────────────────────────────────────────────────
 
 class EngineBridge:
 
-    def __init__(self) -> None:
-        self._next_order_id   = 1
-        self._next_seq        = 0          # FIFO insertion counter
-        self._next_fill_seq   = 0
-        self._book_sequence   = 0
+    def __init__(self, symbol: str = "AAPL") -> None:
+        self._symbol = symbol
 
-        # bids: descending by price, then ascending by seq (FIFO)
-        # asks: ascending by price, then ascending by seq (FIFO)
-        # Each side is a dict[price -> list[_Order]] (FIFO queue per level)
-        self._bids: Dict[float, List[_Order]] = {}
-        self._asks: Dict[float, List[_Order]] = {}
+        # OrderBookInterface is not thread-safe and FastAPI's sync endpoints
+        # run in a threadpool — every engine touch goes through this lock.
+        self._lock = threading.RLock()
 
-        # order_id -> _Order (only resting orders live here)
-        self._order_map: Dict[int, _Order] = {}
+        callbacks = ob.OrderBookCallbacks()
+        callbacks.on_fill = self._on_fill
+        callbacks.on_cancel = self._on_cancel
+        callbacks.on_ack = self._on_ack
+        callbacks.on_book_update = self._on_book_update
 
-        self._fills:      List[FillRecord] = []
-        self._runs:       Dict[str, BacktestRun] = {}
-        self._last_trade: Optional[float] = None
+        self._book = ob.TreeOrderBook(symbol, ob.FIFOMatcher(), callbacks)
 
-        # WebSocket connections
+        self._next_order_id = 1
+        self._meta: Dict[int, _OrderMeta] = {}
+        self._fills: List[FillRecord] = []
+        self._current: Optional[_Outcome] = None
+
+        # Observability: the engine's own change signal, and how many phantom
+        # projection entries we've had to drop (should stay at 0).
+        self._engine_updates = 0
+        self._projection_repairs = 0
+
+        self._runs: Dict[str, BacktestRun] = {}
         self._connections: Set[WebSocket] = set()
+
+    # ── Engine callbacks ──────────────────────────────────────────────────────
+    #
+    # These run on whichever thread called into the engine, inside add() /
+    # cancel(), with `_lock` already held by the caller.
+
+    def _on_ack(self, event) -> None:
+        if self._current is not None and event.order_id == self._current.order_id:
+            self._current.ack_status = event.status
+
+    def _on_fill(self, event) -> None:
+        self._fills.append(FillRecord(
+            sequence=event.sequence,
+            aggressive_order_id=event.aggressive_order_id,
+            passive_order_id=event.passive_order_id,
+            side=_SIDE_TO_WIRE[event.aggressor_side],
+            price=ob.from_basis_points(event.fill_price),
+            quantity=event.fill_quantity,
+            symbol=event.symbol or self._symbol,
+        ))
+
+        # A fill consumes quantity on both sides of the trade. The aggressor
+        # may not be in `_meta` as a resting order (a market order never
+        # rests), and the passive side always is.
+        self._consume(event.passive_order_id, event.fill_quantity)
+        self._consume(event.aggressive_order_id, event.fill_quantity)
+
+        if self._current is not None and \
+                event.aggressive_order_id == self._current.order_id:
+            self._current.filled += event.fill_quantity
+
+    def _on_cancel(self, event) -> None:
+        if event.reason in _TERMINAL_REASONS:
+            self._meta.pop(event.order_id, None)
+
+        if self._current is not None and event.order_id == self._current.order_id:
+            self._current.cancel_reason = event.reason
+
+    def _on_book_update(self, snapshot) -> None:
+        # The engine's authoritative "book changed" signal. The WebSocket
+        # broadcast isn't driven from here because this runs on a worker
+        # thread with no event loop — the request handler schedules it once
+        # the engine call has returned.
+        self._engine_updates += 1
+
+    def _consume(self, order_id: int, quantity: int) -> None:
+        meta = self._meta.get(order_id)
+        if meta is None:
+            return
+        meta.remaining -= quantity
+        if meta.remaining <= 0:
+            self._meta.pop(order_id, None)
 
     # ── REST handlers ─────────────────────────────────────────────────────────
 
     def submit_order(self, req: OrderRequest) -> OrderSubmissionResponse:
-        order_id = self._next_order_id
-        self._next_order_id += 1
-        seq = self._next_seq
-        self._next_seq += 1
+        engine_type = _TYPE_TO_ENGINE[req.order_type]
 
-        created_at = time.strftime("%H:%M:%S")
-        order = _Order(order_id, req.side, req.price, req.quantity,
-                       req.order_type, req.symbol, seq, created_at)
+        # MARKET orders ignore the price field entirely (order_validators.cpp
+        # skips the positive-price check for them), so don't pretend otherwise
+        # — the UI disables the input but still posts whatever was last typed.
+        price_bp = 0 if engine_type == ob.OrderType.MARKET \
+            else ob.to_basis_points(req.price)
 
-        if req.order_type == "market":
-            self._match_market(order)
-        elif req.order_type == "ioc":
-            self._match_ioc(order)
-        elif req.order_type == "fok":
-            self._match_fok(order)
-        else:
-            # limit — match then rest
-            self._match_limit(order)
-            if order.quantity > 0:
-                self._rest(order)
+        with self._lock:
+            order_id = self._next_order_id
+            self._next_order_id += 1
 
-        self._book_sequence += 1
+            order = ob.Order(
+                id=order_id,
+                symbol=req.symbol,
+                side=_SIDE_TO_ENGINE[req.side],
+                type=engine_type,
+                price=price_bp,
+                quantity=req.quantity,
+                timestamp=time.time_ns(),
+            )
+
+            # Registered before add() because fill/cancel callbacks fire
+            # *during* add() and look this entry up. If the order fully fills
+            # or is cancelled, those same callbacks remove it again.
+            self._meta[order_id] = _OrderMeta(
+                order_id=order_id,
+                side=req.side,
+                price=ob.from_basis_points(price_bp),
+                order_type=req.order_type,
+                symbol=req.symbol,
+                created_at=time.strftime("%H:%M:%S"),
+                quantity=req.quantity,
+            )
+
+            self._current = _Outcome(order_id)
+            try:
+                self._book.add(order)
+                outcome = self._current
+            finally:
+                self._current = None
+
         self._schedule_broadcast()
+        return self._describe(outcome, req)
+
+    def _describe(self, outcome: _Outcome,
+                  req: OrderRequest) -> OrderSubmissionResponse:
+        """Turn the engine's event stream for one order into an API response."""
+        filled = outcome.filled
+        order_id = outcome.order_id
+
+        if outcome.cancel_reason is not None:
+            blurb = _CANCEL_BLURB.get(outcome.cancel_reason, "cancelled")
+            # An IOC that filled some of its quantity is a success with a
+            # cancelled tail; FOK/no-liquidity cancels filled nothing.
+            if filled:
+                return OrderSubmissionResponse(
+                    accepted=True,
+                    order_id=order_id,
+                    status="partially_filled",
+                    message=f"Order {order_id} filled {filled}/{req.quantity} — {blurb}.",
+                )
+            return OrderSubmissionResponse(
+                accepted=False,
+                order_id=order_id,
+                status="cancelled",
+                message=f"Order {order_id} {blurb}.",
+            )
+
+        if filled >= req.quantity:
+            return OrderSubmissionResponse(
+                accepted=True,
+                order_id=order_id,
+                status="filled",
+                message=f"Order {order_id} fully filled ({filled}).",
+            )
+
+        if filled:
+            return OrderSubmissionResponse(
+                accepted=True,
+                order_id=order_id,
+                status="accepted",
+                message=(f"Order {order_id} accepted — filled {filled}/"
+                         f"{req.quantity}, remainder resting."),
+            )
 
         return OrderSubmissionResponse(
             accepted=True,
@@ -110,46 +306,130 @@ class EngineBridge:
         )
 
     def cancel_order(self, req: CancelRequest) -> CancelResponse:
-        order = self._order_map.pop(req.order_id, None)
-        if order is None:
-            return CancelResponse(
-                accepted=False,
-                order_id=req.order_id,
-                message=f"Order {req.order_id} not found or already filled.",
-            )
+        with self._lock:
+            # TreeOrderBook::cancel() is a silent no-op for unknown IDs, so
+            # ask first to distinguish "cancelled" from "never existed".
+            if not self._book.has_order(req.order_id):
+                return CancelResponse(
+                    accepted=False,
+                    order_id=req.order_id,
+                    message=f"Order {req.order_id} not found or already filled.",
+                )
+            self._book.cancel(req.order_id)
 
-        side_book = self._bids if order.side == "buy" else self._asks
-        level = side_book.get(order.price, [])
-        side_book[order.price] = [o for o in level if o.id != order.id]
-        if not side_book[order.price]:
-            del side_book[order.price]
-
-        self._book_sequence += 1
         self._schedule_broadcast()
-
         return CancelResponse(
             accepted=True,
             order_id=req.order_id,
             message=f"Order {req.order_id} cancelled.",
         )
 
+    def get_fills(self, limit: int = 50) -> List[FillRecord]:
+        with self._lock:
+            return self._fills[-limit:]
+
+    # ── Backtests ─────────────────────────────────────────────────────────────
+    #
+    # Not implemented. Running one means driving HistoricalReplayer over an
+    # ITCH 5.0 file, which this service has no way to obtain (see README
+    # "Known gaps"). The endpoints stay so the route shape is settled, but
+    # they report their real status rather than queueing work nothing runs.
+
     def start_backtest(self, req: BacktestRequest) -> BacktestRun:
         run_id = str(uuid.uuid4())[:8]
         run = BacktestRun(
-            run_id=run_id, status="queued", symbol=req.symbol,
-            start_time=req.start_time, end_time=req.end_time,
-            depth=req.depth, message="Backtest queued for execution.",
+            run_id=run_id, status="not_implemented", symbol=req.symbol,
+            start_time=req.start_time, end_time=req.end_time, depth=req.depth,
+            message=("Backtest execution is not implemented: no ITCH 5.0 data "
+                     "source is configured for this deployment."),
         )
         self._runs[run_id] = run
         return run
 
     def get_backtest(self, run_id: str) -> BacktestRun:
-        if run_id not in self._runs:
-            raise KeyError(run_id)
-        return self._runs[run_id]
+        run = self._runs.get(run_id)
+        if run is None:
+            raise HTTPException(status_code=404,
+                                detail=f"No backtest run with id {run_id}.")
+        return run
 
-    def get_fills(self, limit: int = 50) -> List[FillRecord]:
-        return self._fills[-limit:]
+    # ── Snapshot ──────────────────────────────────────────────────────────────
+
+    def _build_snapshot(self) -> BookSnapshot:
+        """Compose the engine's book state with the UI-only projection.
+
+        Level prices, quantities and order counts come from the engine.
+        Order IDs, submission times and the resting-order list come from
+        `_meta`, filtered through `has_order()` so a stale projection entry
+        can never surface as a phantom order.
+        """
+        with self._lock:
+            snap = self._book.snapshot(-1)   # -1 = all levels, not just top 10
+
+            live: List[_OrderMeta] = []
+            for meta in list(self._meta.values()):
+                if self._book.has_order(meta.order_id):
+                    live.append(meta)
+                else:
+                    # The engine says it's gone but we still had it — drop it
+                    # and count the repair. Should never happen; if it does,
+                    # a callback was missed.
+                    self._meta.pop(meta.order_id, None)
+                    self._projection_repairs += 1
+
+            # Group live order IDs by level, preserving submission order,
+            # which for a FIFO book is time priority.
+            by_level: Dict[tuple, List[_OrderMeta]] = {}
+            for meta in live:
+                by_level.setdefault((meta.side, round(meta.price, 4)), []).append(meta)
+
+            def levels(engine_levels, side: str) -> List[BookLevel]:
+                out = []
+                for lvl in engine_levels:
+                    price = ob.from_basis_points(lvl.price)
+                    members = by_level.get((side, round(price, 4)), [])
+                    out.append(BookLevel(
+                        price=price,
+                        quantity=lvl.quantity,       # engine is authoritative
+                        order_count=lvl.order_count,  # engine is authoritative
+                        order_ids=[m.order_id for m in members],
+                        created_at_by_id={m.order_id: m.created_at for m in members},
+                    ))
+                return out
+
+            best_bid = self._book.best_bid()
+            best_ask = self._book.best_ask()
+            last_trade = self._book.last_trade_price()
+
+            return BookSnapshot(
+                symbol=snap.symbol,
+                bids=levels(snap.bids, "buy"),
+                asks=levels(snap.asks, "sell"),
+                best_bid=ob.from_basis_points(best_bid) if best_bid is not None else None,
+                best_ask=ob.from_basis_points(best_ask) if best_ask is not None else None,
+                last_trade_price=ob.from_basis_points(last_trade) if last_trade else None,
+                sequence=snap.sequence,
+                resting_orders=[
+                    RestingOrder(
+                        order_id=m.order_id, side=m.side, price=m.price,
+                        quantity=m.remaining, orig_quantity=m.orig_quantity,
+                        order_type=m.order_type, symbol=m.symbol,
+                        created_at=m.created_at,
+                    )
+                    for m in live
+                ],
+            )
+
+    def diagnostics(self) -> Dict[str, int]:
+        """Engine-vs-projection health, surfaced for debugging."""
+        with self._lock:
+            return {
+                "engine_updates": self._engine_updates,
+                "engine_sequence": self._book.sequence(),
+                "projection_size": len(self._meta),
+                "projection_repairs": self._projection_repairs,
+                "fills": len(self._fills),
+            }
 
     # ── WebSocket ─────────────────────────────────────────────────────────────
 
@@ -168,11 +448,10 @@ class EngineBridge:
     async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
         self._connections.add(websocket)
-        # send current state immediately
         await websocket.send_text(self._snapshot_json())
         try:
             while True:
-                # keep-alive heartbeat; real updates are pushed by _broadcast()
+                # Keep-alive resend; real updates are pushed by _broadcast().
                 await asyncio.sleep(5.0)
                 await websocket.send_text(self._snapshot_json())
         except (WebSocketDisconnect, Exception):
@@ -192,156 +471,10 @@ class EngineBridge:
 
     def _snapshot_json(self) -> str:
         snap = self._build_snapshot()
+        with self._lock:
+            recent = [f.model_dump() for f in self._fills[-50:]]
         return json.dumps({
             "type": "snapshot",
             "book": snap.model_dump(),
-            "fills": [f.model_dump() for f in self._fills[-50:]],
+            "fills": recent,
         })
-
-    # ── Snapshot builder ──────────────────────────────────────────────────────
-
-    def _build_snapshot(self) -> BookSnapshot:
-        bids = [
-            BookLevel(
-                price=p,
-                quantity=sum(o.quantity for o in orders),
-                order_count=len(orders),
-                order_ids=[o.id for o in orders],
-                created_at_by_id={o.id: o.created_at for o in orders},
-            )
-            for p, orders in sorted(self._bids.items(), reverse=True)
-            if orders
-        ]
-        asks = [
-            BookLevel(
-                price=p,
-                quantity=sum(o.quantity for o in orders),
-                order_count=len(orders),
-                order_ids=[o.id for o in orders],
-                created_at_by_id={o.id: o.created_at for o in orders},
-            )
-            for p, orders in sorted(self._asks.items())
-            if orders
-        ]
-
-        resting = [
-            RestingOrder(
-                order_id=o.id, side=o.side, price=o.price,
-                quantity=o.quantity, orig_quantity=o.orig_quantity,
-                order_type=o.order_type, symbol=o.symbol,
-                created_at=o.created_at,
-            )
-            for o in self._order_map.values()
-        ]
-
-        return BookSnapshot(
-            symbol="AAPL",
-            bids=bids,
-            asks=asks,
-            best_bid=bids[0].price if bids else None,
-            best_ask=asks[0].price if asks else None,
-            last_trade_price=self._last_trade,
-            sequence=self._book_sequence,
-            resting_orders=resting,
-        )
-
-    # ── Matching logic ────────────────────────────────────────────────────────
-
-    def _rest(self, order: _Order) -> None:
-        book = self._bids if order.side == "buy" else self._asks
-        book.setdefault(order.price, []).append(order)
-        self._order_map[order.id] = order
-
-    def _match_limit(self, aggressive: _Order) -> None:
-        """Match against opposite side until quantity exhausted or no cross."""
-        opposite = self._asks if aggressive.side == "buy" else self._bids
-        prices = (
-            sorted(opposite.keys())          # ascending for buy (lowest ask first)
-            if aggressive.side == "buy"
-            else sorted(opposite.keys(), reverse=True)  # descending for sell
-        )
-        for price in prices:
-            if aggressive.quantity == 0:
-                break
-            if aggressive.side == "buy" and price > aggressive.price:
-                break
-            if aggressive.side == "sell" and price < aggressive.price:
-                break
-            self._fill_at_level(aggressive, opposite, price)
-        self._prune_empty(opposite)
-
-    def _match_market(self, aggressive: _Order) -> None:
-        """Match at any price until filled or book empty."""
-        opposite = self._asks if aggressive.side == "buy" else self._bids
-        prices = (
-            sorted(opposite.keys())
-            if aggressive.side == "buy"
-            else sorted(opposite.keys(), reverse=True)
-        )
-        for price in prices:
-            if aggressive.quantity == 0:
-                break
-            self._fill_at_level(aggressive, opposite, price)
-        self._prune_empty(opposite)
-
-    def _match_ioc(self, aggressive: _Order) -> None:
-        """Fill immediately, cancel remainder."""
-        self._match_limit(aggressive)
-        # remainder is simply discarded (never rested)
-
-    def _match_fok(self, aggressive: _Order) -> None:
-        """Fill only if the full quantity can be satisfied; otherwise cancel."""
-        opposite = self._asks if aggressive.side == "buy" else self._bids
-        prices = (
-            sorted(opposite.keys())
-            if aggressive.side == "buy"
-            else sorted(opposite.keys(), reverse=True)
-        )
-        available = 0
-        for price in prices:
-            if aggressive.side == "buy" and price > aggressive.price:
-                break
-            if aggressive.side == "sell" and price < aggressive.price:
-                break
-            available += sum(o.quantity for o in opposite.get(price, []))
-            if available >= aggressive.quantity:
-                break
-
-        if available >= aggressive.quantity:
-            self._match_limit(aggressive)
-
-    def _fill_at_level(
-        self,
-        aggressive: _Order,
-        opposite: Dict[float, List["_Order"]],
-        price: float,
-    ) -> None:
-        queue = opposite.get(price, [])
-        while queue and aggressive.quantity > 0:
-            passive = queue[0]
-            fill_qty = min(aggressive.quantity, passive.quantity)
-
-            fill = FillRecord(
-                sequence=self._next_fill_seq,
-                aggressive_order_id=aggressive.id,
-                passive_order_id=passive.id,
-                side=aggressive.side,
-                price=price,
-                quantity=fill_qty,
-                symbol=aggressive.symbol,
-            )
-            self._fills.append(fill)
-            self._next_fill_seq += 1
-            self._last_trade = price
-
-            aggressive.quantity -= fill_qty
-            passive.quantity    -= fill_qty
-
-            if passive.quantity == 0:
-                queue.pop(0)
-                self._order_map.pop(passive.id, None)
-
-    def _prune_empty(self, side_book: Dict[float, List["_Order"]]) -> None:
-        empty = [p for p, q in side_book.items() if not q]
-        for p in empty:
-            del side_book[p]

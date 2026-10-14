@@ -12,7 +12,15 @@ from .models import (
 )
 from .services import EngineBridge
 
-app = FastAPI(title="Order Book Dashboard API", version="0.2.0")
+app = FastAPI(
+    title="Order Book Dashboard API",
+    version="0.3.0",
+    description=(
+        "REST + WebSocket surface over the C++ limit order book engine. "
+        "Matching is performed by TreeOrderBook from the compiled "
+        "`order_book` extension; this service only translates and streams."
+    ),
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,6 +36,16 @@ bridge = EngineBridge()
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/diagnostics")
+def diagnostics() -> dict[str, int]:
+    """Engine counters vs. the API layer's projection of it.
+
+    `projection_repairs` should always be 0 — a non-zero value means the
+    bridge's view of resting orders drifted from the engine's.
+    """
+    return bridge.diagnostics()
 
 
 # ── Orders ────────────────────────────────────────────────────────────────────

@@ -31,6 +31,7 @@ namespace order_book {
 
 class PriceLevelInterface {
 public:
+    // Destructor
     virtual ~PriceLevelInterface() = default;
 
     // ── Mutation ─────────────────────────────────────────────────────────────

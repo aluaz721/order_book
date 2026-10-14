@@ -66,14 +66,17 @@ SimulationEngine::SimulationEngine(SimulationConfig                    config,
 void SimulationEngine::wire_callbacks() {
     OrderBookCallbacks cbs;
 
-    // on_fill: check stop triggers before forwarding to user.
-    // Calling stop_manager_->on_trade() here (rather than after book_->add()
-    // returns) ensures triggered stops are processed while the fill event's
-    // price and timestamp are in scope — and before the user's callback sees
-    // the fill, preserving a consistent observable ordering.
+    // on_fill: record the trade for stop-trigger evaluation, then forward.
+    //
+    // Only recorded here, not acted on: this callback fires from inside the
+    // book's own matching sweep, and submitting a triggered stop at this point
+    // would re-enter add() while that sweep is still in progress. dispatch()
+    // drains the recorded trades once the book operation has returned, so
+    // observers also see fills in chronological order — the trade that fired
+    // a stop before the fills of the order it converted into.
     cbs.on_fill = [this](const FillEvent& e) {
         if (stop_manager_) {
-            stop_manager_->on_trade(e.fill_price, e.timestamp);
+            stop_manager_->record_trade(e.fill_price, e.timestamp);
         }
         if (on_fill_) on_fill_(e);
     };
@@ -107,6 +110,8 @@ void SimulationEngine::wire_callbacks() {
 void SimulationEngine::add_source(std::unique_ptr<OrderSource> source) {
     if (!source) return;
     sources_.push_back(std::move(source));
+    live_gen_.push_back(0);
+    heap_ts_.push_back(0);
 }
 
 InteractiveSource* SimulationEngine::interactive_source() const noexcept {
@@ -142,13 +147,37 @@ void SimulationEngine::rebuild_heap() {
     SourceHeap empty;
     std::swap(heap_, empty);
 
+    // Every previously-issued generation stamp is void now that the heap is
+    // gone, so reset the bookkeeping before re-pushing.
+    live_gen_.assign(sources_.size(), 0);
+    heap_ts_.assign(sources_.size(), 0);
+
     for (size_t i = 0; i < sources_.size(); ++i) {
         if (sources_[i]->exhausted()) continue;
         const uint64_t ts = sources_[i]->next_timestamp();
         if (ts != std::numeric_limits<uint64_t>::max()) {
-            heap_.push({ts, i});
+            push_source(i, ts);
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// push_source() / in_heap()
+//
+// See the live_gen_ / heap_ts_ comment in simulation_engine.hpp. Each push
+// stamps a fresh generation, which both records that the source now has a
+// live entry and invalidates whatever entry it had before.
+// ─────────────────────────────────────────────────────────────────────────────
+
+void SimulationEngine::push_source(size_t index, uint64_t ts) {
+    const uint64_t generation = ++generation_counter_;
+    live_gen_[index] = generation;
+    heap_ts_[index]  = ts;
+    heap_.push({ts, index, generation});
+}
+
+bool SimulationEngine::in_heap(size_t index) const noexcept {
+    return live_gen_[index] != 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -194,22 +223,29 @@ void SimulationEngine::notify_sources(const BookSnapshot& snap,
 // CANCEL/REDUCE/EXECUTE/REPLACE reference an order the book already knows
 // about (from a historical feed or the UI), so they skip OrderValidators —
 // validation only applies to brand-new orders entering the book.
+//
+// Whatever the branch, the book operation is followed by
+// StopOrderManager::drain_triggers(): any trade it reported may have crossed a
+// stop price, and the triggered stops must be submitted now that the book is
+// no longer mid-operation. Doing it here keeps the whole cascade inside the
+// tick that caused it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 void SimulationEngine::dispatch(SourceEvent event) {
+    dispatch_to_book(std::move(event));
+    stop_manager_->drain_triggers();
+}
+
+void SimulationEngine::dispatch_to_book(SourceEvent event) {
     switch (event.type) {
         case SourceEventType::NEW_ORDER: {
             Order order = std::move(event.order);
 
-            // Route stop orders before field validation — the validator
-            // doesn't handle stop/stop-limit and would reject them on the
-            // price field check.
-            if (order.type == OrderType::STOP ||
-                order.type == OrderType::STOP_LIMIT) {
-                stop_manager_->submit(std::move(order), on_ack_);
-                return;
-            }
-
+            // Every new order is validated, stops included — OrderValidators
+            // ::validate() dispatches on type and applies validate_stop() to
+            // STOP/STOP_LIMIT (stop price on the correct side of the market,
+            // limit_price consistent with the stop price). Only after that do
+            // stops branch off to the manager instead of the book.
             const auto result = OrderValidators::validate(order, *book_);
             if (!result.valid) {
                 orders_rejected_++;
@@ -222,6 +258,16 @@ void SimulationEngine::dispatch(SourceEvent event) {
                         order.timestamp
                     });
                 }
+                return;
+            }
+
+            // Stops are conditional triggers, not resting orders — they go to
+            // the manager, which holds them outside the visible book until a
+            // trade crosses their stop price. TreeOrderBook::add() throws on
+            // them by design.
+            if (order.type == OrderType::STOP ||
+                order.type == OrderType::STOP_LIMIT) {
+                stop_manager_->submit(std::move(order), on_ack_);
                 return;
             }
 
@@ -280,11 +326,12 @@ void SimulationEngine::run() {
 
         // ── Step 1: Find the source with the earliest pending event ───────────
 
-        // Discard stale heap entries until we find a source that actually has
-        // something ready. A stale entry occurs when a source was re-inserted
-        // with timestamp T, then notify_sources() caused it to buffer more
-        // orders — the heap still holds the old T but the source may now have
-        // an earlier-than-T timestamp in its queue.
+        // Pop until a source that actually has something ready turns up.
+        // Two kinds of entry get skipped: one superseded by a later push for
+        // the same source (a source whose next timestamp moved earlier has to
+        // be pushed again, since a priority_queue entry cannot be updated in
+        // place), and one whose source reports nothing on re-query — the
+        // false positive InteractiveSource's lock-free check allows.
         bool dispatched = false;
 
         while (!heap_.empty() && running_.load()) {
@@ -293,6 +340,15 @@ void SimulationEngine::run() {
 
             // Bounds guard — should never fire but prevents UB on bad state.
             if (top.index >= sources_.size()) continue;
+
+            // Discard a superseded entry: the source was pushed again with an
+            // earlier timestamp after this entry was queued, so this one is a
+            // duplicate and the newer entry is the one to act on.
+            if (top.generation != live_gen_[top.index]) continue;
+
+            // This source no longer has a live entry — whatever happens below,
+            // it is re-pushed only through push_source().
+            live_gen_[top.index] = 0;
 
             OrderSource* src = sources_[top.index].get();
 
@@ -322,7 +378,7 @@ void SimulationEngine::run() {
                 if (!src->exhausted()) {
                     const uint64_t new_ts = src->next_timestamp();
                     if (new_ts != std::numeric_limits<uint64_t>::max()) {
-                        heap_.push({new_ts, top.index});
+                        push_source(top.index, new_ts);
                     }
                 }
                 continue;
@@ -342,7 +398,7 @@ void SimulationEngine::run() {
             if (!src->exhausted()) {
                 const uint64_t new_ts = src->next_timestamp();
                 if (new_ts != std::numeric_limits<uint64_t>::max()) {
-                    heap_.push({new_ts, top.index});
+                    push_source(top.index, new_ts);
                 }
             }
 
@@ -353,15 +409,20 @@ void SimulationEngine::run() {
             // point, StrategySource may have buffered new orders. Those sources
             // are not in the heap yet (we deliberately don't insert in
             // notify_sources to avoid double-insertion). We scan for them now.
+            //
+            // A source is pushed only if it has no live entry, or if its next
+            // timestamp moved EARLIER than the entry it already has — which is
+            // the only case where the existing entry would be popped too late.
+            // Without that condition this scan pushed every live source on
+            // every dispatched event, so the heap grew without bound over a
+            // long run with two or more live sources.
             for (size_t i = 0; i < sources_.size(); ++i) {
                 if (i == top.index) continue; // already re-inserted above
                 if (sources_[i]->exhausted()) continue;
                 const uint64_t candidate_ts = sources_[i]->next_timestamp();
-                if (candidate_ts != std::numeric_limits<uint64_t>::max()) {
-                    // Only insert if not already in the heap. Since we can't
-                    // query the heap for membership, we always insert and rely
-                    // on the stale-entry discard at the top of the inner loop.
-                    heap_.push({candidate_ts, i});
+                if (candidate_ts == std::numeric_limits<uint64_t>::max()) continue;
+                if (!in_heap(i) || candidate_ts < heap_ts_[i]) {
+                    push_source(i, candidate_ts);
                 }
             }
 
@@ -457,6 +518,8 @@ void SimulationEngine::reset() {
 
     SourceHeap empty;
     std::swap(heap_, empty);
+    live_gen_.assign(sources_.size(), 0);
+    heap_ts_.assign(sources_.size(), 0);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

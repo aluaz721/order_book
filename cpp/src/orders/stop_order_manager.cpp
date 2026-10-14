@@ -163,7 +163,37 @@ void StopOrderManager::cancel(uint64_t order_id, uint64_t timestamp) {
     stop_map_.erase(order_id);
 }
 
+void StopOrderManager::record_trade(int64_t trade_price, uint64_t timestamp) {
+    pending_trades_.push_back(PendingTrade{trade_price, timestamp});
+}
+
+void StopOrderManager::drain_triggers() {
+    // Already inside the loop below: the trade has been appended to
+    // pending_trades_ and the in-flight drain will reach it. Returning here is
+    // what turns a cascade into iteration instead of recursion.
+    if (draining_) return;
+
+    draining_ = true;
+
+    // Index-based, re-reading size() each pass: trigger_for_trade() submits to
+    // the book, whose fills append to pending_trades_ as we go. Each entry is
+    // copied out before the call, so a reallocation mid-call is harmless.
+    size_t i = 0;
+    while (i < pending_trades_.size()) {
+        const PendingTrade trade = pending_trades_[i++];
+        trigger_for_trade(trade.price, trade.timestamp);
+    }
+
+    pending_trades_.clear();
+    draining_ = false;
+}
+
 void StopOrderManager::on_trade(int64_t trade_price, uint64_t timestamp) {
+    record_trade(trade_price, timestamp);
+    drain_triggers();
+}
+
+void StopOrderManager::trigger_for_trade(int64_t trade_price, uint64_t timestamp) {
     // Phase 1: collect and remove from maps atomically
     std::vector<Order> to_trigger;
 
@@ -185,8 +215,9 @@ void StopOrderManager::on_trade(int64_t trade_price, uint64_t timestamp) {
         sell_it = stop_sells_.erase(sell_it);
     }
 
-    // Phase 2: submit — re-entrant on_trade() calls are now safe because
-    // the maps are already clean
+    // Phase 2: submit. The maps are already clean, so a trade recorded while
+    // these converted orders match cannot re-trigger a stop that is mid-flight
+    // — it is evaluated by the next pass of the draining loop instead.
     for (auto& order : to_trigger) {
         trigger(order, trade_price, timestamp);
     }
@@ -215,13 +246,15 @@ int64_t StopOrderManager::nearest_stop_sell() const noexcept {
     return stop_sells_.empty() ? 0 : stop_sells_.begin()->first;
 }
 
+// Converts one already-detached stop order into a live order and submits it.
+//
+// Precondition: `stop_order` has been removed from stop_buys_/stop_sells_ AND
+// from stop_map_ by the caller (on_trade() phase 1) before this is called.
+// That ordering is what makes the cascade safe: book_.add() below can emit
+// fills that re-enter on_trade(), and the re-entrant call must not see a
+// half-triggered stop still sitting in the maps. Do not reintroduce a
+// stop_map_ lookup here — the entry is deliberately already gone.
 void StopOrderManager::trigger(Order& stop_order, int64_t trade_price, uint64_t timestamp) {
-    auto stop_it = stop_map_.find(stop_order.id);
-    if (stop_it == stop_map_.end()) {
-        return;
-    }
-
-    const StopLocation& location = stop_it->second;
     Order live_order;
     live_order.id = next_order_id_();
     live_order.symbol = stop_order.symbol;
@@ -254,13 +287,6 @@ void StopOrderManager::trigger(Order& stop_order, int64_t trade_price, uint64_t 
     }
 
     book_.add(std::move(live_order));
-}
-
-void StopOrderManager::trigger_queue(StopQueue& queue, int64_t trade_price, uint64_t timestamp) {
-    for (Order& stop_order : queue) {
-        trigger(stop_order, trade_price, timestamp);
-    }
-    queue.clear();
 }
 
 } // namespace order_book

@@ -1,3 +1,8 @@
 fastapi>=0.111.0
 uvicorn[standard]>=0.30.0
 pydantic>=2.7.0
+
+# The `order_book` engine itself is NOT listed here: it is the compiled
+# pybind11 extension from this repo, built into a wheel by the Dockerfile's
+# builder stage (or installed locally with `pip install -e .` from the repo
+# root). It is not published to PyPI, so pip cannot resolve it by name.

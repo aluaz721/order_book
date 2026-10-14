@@ -2,8 +2,7 @@
 Standard market-microstructure statistics computed from the order book's own
 data types (BookSnapshot, BookLevel, FillEvent). None of these need a live
 book reference — they work equally well against a snapshot captured live,
-replayed from historical data, or logged by a separate backtesting project,
-which is why they live here rather than downstream.
+replayed from historical data, or logged by a separate backtesting project.
 
 Units: prices and quantities are in the engine's own representation —
 prices as int64 basis points (1 unit = $0.0001; see order_book.to_basis_points

@@ -11,8 +11,12 @@
 #include "order_book/engine/simulation_engine.hpp"
 #include "order_book/matching/fifo_matcher.hpp"
 #include "order_book/matching/matching_algorithm.hpp"
+#include "order_book/orders/order_validators.hpp"
+#include "order_book/orders/stop_order_manager.hpp"
 #include "order_book/sources/historical_replayer.hpp"
+#include "order_book/sources/interactive_source.hpp"
 #include "order_book/sources/order_source.hpp"
+#include "order_book/sources/strategy_source.hpp"
 
 #include <memory>
 #include <string>
@@ -213,6 +217,104 @@ PYBIND11_MODULE(_order_book, m) {
         .def("set_matching_algorithm", &TreeOrderBook::set_matching_algorithm,
              py::arg("algo"));
 
+    // ── Validation ────────────────────────────────────────────────────────────
+    // Exposed so a Python risk layer can pre-check an order against the book
+    // before submitting it, and get back the same verdict (and the same
+    // message) the engine would produce on its own.
+
+    py::class_<ValidationResult>(m, "ValidationResult")
+        .def_readonly("valid", &ValidationResult::valid)
+        .def_readonly("reason", &ValidationResult::reason)
+        .def("__bool__", [](const ValidationResult& r) { return r.valid; })
+        .def("__repr__", [](const ValidationResult& r) {
+            return r.valid ? std::string("<ValidationResult valid>")
+                           : "<ValidationResult invalid: " + r.reason + ">";
+        });
+
+    auto validators = m.def_submodule(
+        "validators",
+        "Stateless order validators — the same checks SimulationEngine runs "
+        "on every new order before routing it to the book or the stop "
+        "manager.");
+
+    validators.def("validate", &OrderValidators::validate,
+                   py::arg("order"), py::arg("book"),
+                   "Run every applicable validator: fields, then FOK "
+                   "feasibility or stop-price sanity by type.");
+    validators.def("validate_fields", &OrderValidators::validate_fields,
+                   py::arg("order"),
+                   "Structural checks only — no book access.");
+    validators.def("validate_fok", &OrderValidators::validate_fok,
+                   py::arg("order"), py::arg("book"),
+                   "Whether a FILL_OR_KILL order can be filled in full right "
+                   "now. A pure read of the book.");
+    validators.def("validate_stop", &OrderValidators::validate_stop,
+                   py::arg("order"), py::arg("book"),
+                   "Stop price on the correct side of the market, and (for "
+                   "STOP_LIMIT) limit_price consistent with the stop price: "
+                   "<= stop for buys, >= stop for sells.");
+
+    // ── StopOrderManager ──────────────────────────────────────────────────────
+    // Holds STOP / STOP_LIMIT orders outside the visible book until a trade
+    // crosses their stop price. SimulationEngine owns one and routes stops to
+    // it; reach that one via SimulationEngine.stop_manager(). Constructing one
+    // directly is for driving a bare OrderBookInterface without an engine —
+    // in which case the record_trade / drain_triggers contract below is yours
+    // to honour.
+
+    py::class_<StopOrderManager>(m, "StopOrderManager")
+        .def(py::init([](OrderBookInterface&       book,
+                          TriggerCallback           on_trigger,
+                          CancelCallback            on_cancel,
+                          std::function<uint64_t()> next_order_id) {
+                 if (!next_order_id) {
+                     // Converted orders still need unique ids. Start well
+                     // clear of hand-assigned ones so the two don't collide.
+                     auto counter = std::make_shared<uint64_t>(1'000'000);
+                     next_order_id = [counter]() -> uint64_t {
+                         return (*counter)++;
+                     };
+                 }
+                 return std::make_unique<StopOrderManager>(
+                     book, std::move(on_trigger), std::move(on_cancel),
+                     std::move(next_order_id));
+             }),
+             py::arg("book"),
+             py::arg("on_trigger")    = py::none(),
+             py::arg("on_cancel")     = py::none(),
+             py::arg("next_order_id") = py::none(),
+             // The manager holds a reference to the book — keep it alive.
+             py::keep_alive<1, 2>())
+        .def("submit", &StopOrderManager::submit,
+             py::arg("order"), py::arg("on_ack") = py::none(),
+             "Accept a STOP or STOP_LIMIT order. Acknowledged with "
+             "PENDING_TRIGGER if held, REJECTED otherwise.")
+        .def("cancel", &StopOrderManager::cancel,
+             py::arg("order_id"), py::arg("timestamp") = 0,
+             "Cancel a stop that has not triggered yet. A no-op if it has "
+             "already fired or is unknown.")
+        .def("record_trade", &StopOrderManager::record_trade,
+             py::arg("trade_price"), py::arg("timestamp"),
+             "Note a trade for trigger evaluation without submitting "
+             "anything. Safe to call from an on_fill callback, where the book "
+             "is mid-operation.")
+        .def("drain_triggers", &StopOrderManager::drain_triggers,
+             "Act on every recorded trade, submitting the orders any crossed "
+             "stops convert into. Call only after the book operation that "
+             "produced those trades has returned.")
+        .def("on_trade", &StopOrderManager::on_trade,
+             py::arg("trade_price"), py::arg("timestamp"),
+             "record_trade() + drain_triggers(), for callers that are not "
+             "inside a book callback.")
+        .def("pending_stop_count", &StopOrderManager::pending_stop_count)
+        .def("has_stop", &StopOrderManager::has_stop, py::arg("order_id"))
+        .def("nearest_stop_buy", &StopOrderManager::nearest_stop_buy,
+             "Lowest pending buy-stop price (the next to trigger as the "
+             "market rises), or 0 if none.")
+        .def("nearest_stop_sell", &StopOrderManager::nearest_stop_sell,
+             "Highest pending sell-stop price (the next to trigger as the "
+             "market falls), or 0 if none.");
+
     // ── SimulationConfig ─────────────────────────────────────────────────────
 
     py::class_<SimulationConfig>(m, "SimulationConfig")
@@ -251,6 +353,53 @@ PYBIND11_MODULE(_order_book, m) {
     // code never needs to call anything on it directly.
     py::class_<OrderSource, py::smart_holder>(m, "OrderSource");
 
+    // ── InteractiveSource ─────────────────────────────────────────────────────
+    // The route for orders that originate "now" rather than from a file: the
+    // API layer (or a Python caller) submits, the engine drains on its next
+    // run(). This is also the only way to reach STOP / STOP_LIMIT, since
+    // TreeOrderBook::add() rejects them and SimulationEngine::dispatch() is
+    // what routes them to the StopOrderManager.
+
+    py::class_<InteractiveSource, OrderSource, py::smart_holder>(m, "InteractiveSource")
+        .def(py::init<std::string>(), py::arg("name") = "InteractiveSource")
+        .def("submit", &InteractiveSource::submit, py::arg("order"),
+             "Queue an order for the engine to process on its next run(). "
+             "An order with id == 0 is assigned a unique id here.")
+        .def("submit_cancel", &InteractiveSource::submit_cancel,
+             py::arg("order_id"), py::arg("symbol") = std::string{},
+             py::arg("timestamp") = 0,
+             "Queue a cancellation of a resting order. For a stop that has "
+             "not triggered yet, use SimulationEngine.stop_manager().cancel() "
+             "instead — a pending stop is not in the book.")
+        .def("pending_count", &InteractiveSource::pending_count)
+        .def("is_empty", &InteractiveSource::is_empty)
+        .def("exhausted", &InteractiveSource::exhausted)
+        .def("name", &InteractiveSource::name);
+
+    // ── StrategySource ────────────────────────────────────────────────────────
+    // Calls a Python callable on every book update and feeds whatever orders
+    // it returns back into the engine on the following tick. The one-tick
+    // delay is deliberate — see strategy_source.hpp.
+    //
+    // The callback runs synchronously on the thread that called
+    // SimulationEngine.run(), which holds the GIL for the duration of the run.
+
+    py::class_<StrategySource, OrderSource, py::smart_holder>(m, "StrategySource")
+        .def(py::init<StrategySource::StrategyCallback, std::string>(),
+             py::arg("callback"), py::arg("name") = "StrategySource",
+             "callback(snapshot: BookSnapshot, timestamp: int) -> list[Order]. "
+             "Returned orders must carry a non-zero id — unlike "
+             "InteractiveSource, this source does not assign one, and the "
+             "engine's validator rejects id == 0.")
+        .def("set_callback", &StrategySource::set_callback, py::arg("callback"),
+             "Swap in a new callback, discarding any orders the old one had "
+             "buffered.")
+        .def("pending_order_count", &StrategySource::pending_order_count)
+        .def("callback_invocations", &StrategySource::callback_invocations)
+        .def("total_orders_submitted", &StrategySource::total_orders_submitted)
+        .def("exhausted", &StrategySource::exhausted)
+        .def("name", &StrategySource::name);
+
     py::class_<HistoricalReplayer, OrderSource, py::smart_holder>(m, "HistoricalReplayer")
         .def(py::init<HistoricalReplayer::Config>(), py::arg("config"))
         .def("messages_parsed", &HistoricalReplayer::messages_parsed)
@@ -286,8 +435,26 @@ PYBIND11_MODULE(_order_book, m) {
         .def("tick_count", &SimulationEngine::tick_count)
         .def("book", &SimulationEngine::book, py::return_value_policy::reference_internal)
         .def("config", &SimulationEngine::config, py::return_value_policy::reference_internal)
+        .def("heap_size", &SimulationEngine::heap_size,
+             "Diagnostic: entries in the source-merge heap. Stays O(sources) "
+             "however long the engine runs.")
+        // Typed source accessors. Each returns None if no source of that type
+        // is registered. Ownership stays with the engine — these are the
+        // handles to use after add_source() has consumed the original object.
+        .def("interactive_source", &SimulationEngine::interactive_source,
+             py::return_value_policy::reference_internal)
         .def("historical_replayer", &SimulationEngine::historical_replayer,
-             py::return_value_policy::reference_internal);
+             py::return_value_policy::reference_internal)
+        .def("strategy_source", &SimulationEngine::strategy_source,
+             py::return_value_policy::reference_internal)
+        .def("stop_manager",
+             [](SimulationEngine& engine) -> StopOrderManager& {
+                 return engine.stop_manager();
+             },
+             py::return_value_policy::reference_internal,
+             "The engine's stop-order manager — where pending STOP and "
+             "STOP_LIMIT orders live. Query or cancel them here; they are not "
+             "in the book.");
 
     // ── Price utilities ──────────────────────────────────────────────────────
 

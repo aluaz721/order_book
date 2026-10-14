@@ -41,10 +41,12 @@ namespace order_book {
 //   STOP, STOP_LIMIT  →  StopOrderManager::submit()
 //   all others        →  OrderValidators::validate() → OrderBook::add()
 //
-//   After each fill emitted by the book, the engine calls
-//   stop_manager_.on_trade() to check for triggered stops. Triggered stops
-//   produce new orders that are submitted synchronously in the same tick
-//   (not buffered), to correctly model the cascade of stop triggers.
+//   Each fill emitted by the book is recorded with
+//   stop_manager_.record_trade(); once the book operation returns, dispatch()
+//   calls stop_manager_.drain_triggers(), which submits the orders any
+//   crossed stops convert into. Triggered stops are therefore handled within
+//   the same tick, but never from inside an in-progress book operation — see
+//   the split in stop_order_manager.hpp for why that matters.
 //
 // Feedback to strategies:
 //   After each BookSnapshot is emitted by the book, the engine calls
@@ -136,13 +138,27 @@ public:
 
     const SimulationConfig& config() const noexcept { return config_; }
 
+    // The engine's stop-order manager. Exposed so callers (notably the Python
+    // bindings) can inspect and cancel pending stops — stops are submitted
+    // through a source like any other order, but a pending stop lives here,
+    // not in the book, so there is nowhere else to query or cancel it.
+    StopOrderManager&       stop_manager()       noexcept { return *stop_manager_; }
+    const StopOrderManager& stop_manager() const noexcept { return *stop_manager_; }
+
+    // Number of entries currently in the source heap. A diagnostic: the heap
+    // holds at most one live entry per source plus any superseded entries not
+    // yet discarded, so this should stay O(sources) no matter how long the
+    // engine runs. Tests assert exactly that.
+    size_t heap_size() const noexcept { return heap_.size(); }
+
 private:
 
     // ── Priority queue ────────────────────────────────────────────────────────
 
     struct SourceEntry {
-        uint64_t next_ts;   // cached next_timestamp() from the source
-        size_t   index;     // index into sources_
+        uint64_t next_ts;      // cached next_timestamp() from the source
+        size_t   index;        // index into sources_
+        uint64_t generation;   // stamp identifying this push — see live_gen_
 
         bool operator>(const SourceEntry& o) const noexcept {
             if (next_ts != o.next_ts) return next_ts > o.next_ts;
@@ -159,9 +175,23 @@ private:
 
     void rebuild_heap();
 
+    // Push source `index` with timestamp `ts`, stamping it as that source's
+    // one live heap entry. Any earlier entry for the same source is thereby
+    // superseded and will be discarded when it surfaces in run().
+    void push_source(size_t index, uint64_t ts);
+
+    // True if source `index` has a live (non-superseded) entry in the heap.
+    bool in_heap(size_t index) const noexcept;
+
     // Route a source event to the book (add/cancel/reduce/execute/replace)
-    // or the stop manager (STOP/STOP_LIMIT new orders).
+    // or the stop manager (STOP/STOP_LIMIT new orders), then act on any stop
+    // triggers the resulting trades crossed.
     void dispatch(SourceEvent event);
+
+    // The routing half of dispatch(), without the stop-trigger drain. Split
+    // out so the drain happens on exactly one path, after the book operation
+    // has returned — see dispatch().
+    void dispatch_to_book(SourceEvent event);
 
     // Wire the engine's own callbacks into the book and stop manager.
     void wire_callbacks();
@@ -182,6 +212,20 @@ private:
 
     std::vector<std::unique_ptr<OrderSource>> sources_;
     SourceHeap                                heap_;
+
+    // Lazy-deletion bookkeeping, parallel to sources_.
+    //
+    // A std::priority_queue cannot update or remove an entry, so a source
+    // whose next timestamp moves earlier has to be pushed again, leaving the
+    // old entry behind. live_gen_[i] is the generation stamp of source i's
+    // one *valid* entry (0 = source i has no entry in the heap); heap_ts_[i]
+    // is that entry's timestamp. Any popped entry whose generation doesn't
+    // match live_gen_ is a superseded duplicate and is discarded. Together
+    // these bound the heap: a source is re-pushed only when it has no live
+    // entry or its timestamp moved earlier, never once per dispatched event.
+    std::vector<uint64_t> live_gen_;
+    std::vector<uint64_t> heap_ts_;
+    uint64_t              generation_counter_ = 0;
 
     uint64_t current_time_         = 0;
     uint64_t orders_processed_     = 0;

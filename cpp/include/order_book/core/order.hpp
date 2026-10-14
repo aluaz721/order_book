@@ -113,9 +113,8 @@ inline const char* to_string(OrderStatus s) noexcept {
 // ─────────────────────────────────────────────────────────────────────────────
 // Order
 //
-// Plain data struct — no methods, no virtual dispatch. All prices are stored
-// as int64_t in basis points (hundredths of a cent) to eliminate floating-
-// point rounding errors throughout the matching engine.
+// All prices are stored as int64_t in basis points (hundredths of a cent) 
+// to eliminate floating-point rounding errors throughout the matching engine.
 //
 // Price encoding:
 //   $150.05  →  1500500  (multiply by 10,000)

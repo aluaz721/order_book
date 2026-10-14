@@ -20,9 +20,9 @@ namespace order_book {
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct FillEvent {
-    uint64_t    aggressive_order_id;
-    uint64_t    passive_order_id;
-    std::string symbol;
+    uint64_t    aggressive_order_id;  // incoming order
+    uint64_t    passive_order_id;     // resting order
+    std::string symbol;               // instrument identifier, e.g. "AAPL"
     Side        aggressor_side;
     int64_t     fill_price;           // basis points — passive order's price
     uint64_t    fill_quantity;        // quantity matched in this event
