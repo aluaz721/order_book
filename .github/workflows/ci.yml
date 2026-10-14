@@ -1,0 +1,154 @@
+name: CI
+
+# Runs on every push and pull request. Deliberately separate from
+# wheels.yml, which only builds distributable wheels on version tags —
+# this workflow is the one that has to stay green.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch: {}
+  # Callable as a reusable workflow so wheels.yml can gate a release on the
+  # full suite rather than duplicating these jobs.
+  workflow_call: {}
+
+# A newer push to the same ref supersedes an in-flight run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── C++ engine ──────────────────────────────────────────────────────────────
+  # Builds the library, the GoogleTest suite and the benchmark binary, then
+  # runs the tests. Benchmarks are compiled but not executed: timings from a
+  # shared CI runner are meaningless, but a benchmark that no longer compiles
+  # against the engine API is a real regression. CMakeLists forces
+  # BENCHMARK_ENABLE_TESTING=OFF, so ctest sees this project's cases only.
+  cpp:
+    name: C++ engine (GoogleTest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: >
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          -DORDER_BOOK_BUILD_TESTS=ON
+          -DORDER_BOOK_BUILD_BENCHMARKS=ON
+          -DORDER_BOOK_BUILD_PYTHON=OFF
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      # --timeout caps any single case: a test that deadlocks would otherwise
+      # hold the runner until the job's 6-hour limit instead of failing fast.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure --timeout 120
+
+  # ── Python ──────────────────────────────────────────────────────────────────
+  # Installs the package the way a consumer would (scikit-build-core compiles
+  # the pybind11 extension), then runs both pytest suites against that build:
+  # the binding smoke tests, and the backend's integration tests which drive
+  # the real engine through EngineBridge.
+  python:
+    name: Python bindings + backend (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Build and install the engine
+        run: pip install ".[test]"
+
+      - name: Verify the extension imports
+        run: python -c "import order_book; print(order_book.TreeOrderBook)"
+
+      - name: Binding smoke tests
+        run: pytest -q
+
+      - name: Backend dependencies
+        run: pip install -r python/backend/requirements.txt httpx
+
+      - name: Backend integration tests
+        working-directory: python/backend
+        run: python -m pytest -q
+
+  # ── Frontend ────────────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  # ── Deployable image ────────────────────────────────────────────────────────
+  # Render builds this same Dockerfile. Building it here means a broken
+  # deploy surfaces in CI rather than on the next push to production. The
+  # image's own final stage asserts `import order_book`, so a missing or
+  # broken extension fails this job.
+  docker:
+    name: Backend image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t order-book-backend:ci .
+
+      - name: Smoke-test the container
+        run: |
+          docker run -d --name ci-verify -p 8000:8000 order-book-backend:ci
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/health > /dev/null; then
+              echo "backend up after ${i}s"; break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "backend failed to start"; docker logs ci-verify; exit 1
+            fi
+            sleep 1
+          done
+
+          # Two crossing orders must produce exactly one fill from the engine.
+          curl -sf -X POST http://localhost:8000/orders \
+            -H 'Content-Type: application/json' \
+            -d '{"side":"buy","price":150.25,"quantity":100,"order_type":"limit","symbol":"AAPL"}'
+          curl -sf -X POST http://localhost:8000/orders \
+            -H 'Content-Type: application/json' \
+            -d '{"side":"sell","price":150.25,"quantity":100,"order_type":"limit","symbol":"AAPL"}'
+
+          fills=$(curl -sf http://localhost:8000/fills)
+          echo "fills: $fills"
+          echo "$fills" | grep -q '"quantity":100' \
+            || { echo "expected a fill for 100 @ 150.25"; docker logs ci-verify; exit 1; }
+
+          # The API layer's projection must not have drifted from the engine.
+          diag=$(curl -sf http://localhost:8000/diagnostics)
+          echo "diagnostics: $diag"
+          echo "$diag" | grep -q '"projection_repairs":0' \
+            || { echo "projection drifted from the engine"; exit 1; }
+
+      - name: Container logs
+        if: always()
+        run: docker logs ci-verify || true
+
+      - name: Clean up
+        if: always()
+        run: docker rm -f ci-verify || true

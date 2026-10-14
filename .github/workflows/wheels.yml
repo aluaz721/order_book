@@ -3,19 +3,37 @@ name: Build wheels
 # Builds portable wheels (no compiler/CMake needed by consumers) via
 # cibuildwheel. Deliberately NOT run on every push — only on version tags or
 # when triggered manually — since a full multi-platform build is slow.
-# Extend the final job with a PyPI publish step (twine or trusted publishing)
-# once you're ready to distribute beyond git dependencies.
+#
+# On a `v*` tag the wheels and sdist are attached to a GitHub Release, which
+# is what `pip install <release URL>` resolves against. Nothing is pushed to
+# PyPI: the project is distributed from this repo, so there is no account,
+# token or reserved name to maintain.
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch: {}
 
+concurrency:
+  group: wheels-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # ── Gate ────────────────────────────────────────────────────────────────────
+  # cibuildwheel only runs the binding tests against each wheel, which is a
+  # fraction of the suite. Calling ci.yml here means a tag cannot produce a
+  # release unless the C++ engine, the backend and the deployable image are
+  # all green — the same bar an ordinary push has to clear.
+  test:
+    name: Full test suite
+    uses: ./.github/workflows/ci.yml
+
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
+    needs: test
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
@@ -34,6 +52,7 @@ jobs:
 
   build_sdist:
     name: Build source distribution
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,3 +64,34 @@ jobs:
         with:
           name: sdist
           path: dist/*.tar.gz
+
+  # ── Release ─────────────────────────────────────────────────────────────────
+  # Tag pushes only: a manual dispatch has no tag to attach artifacts to, and
+  # still leaves the wheels downloadable from the run itself.
+  release:
+    name: Attach artifacts to the GitHub Release
+    needs: [build_wheels, build_sdist]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Collect every wheel and the sdist
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: "{wheels-*,sdist}"
+          merge-multiple: true
+
+      - name: List what is being released
+        run: ls -l dist
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" dist/*
+          --repo "$GITHUB_REPOSITORY"
+          --title "$GITHUB_REF_NAME"
+          --generate-notes
+          || gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber

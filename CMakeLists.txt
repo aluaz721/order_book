@@ -16,6 +16,11 @@ option(ORDER_BOOK_BUILD_PYTHON "Build the pybind11 Python bindings" ON)
 include(FetchContent)
 
 if(ORDER_BOOK_BUILD_TESTS)
+  # Keep googletest's own targets out of our install/test surface.
+  set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+  # Match MSVC's dynamic runtime so gtest links against the same CRT we do.
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
   FetchContent_Declare(
     googletest
     URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
@@ -24,6 +29,14 @@ if(ORDER_BOOK_BUILD_TESTS)
 endif()
 
 if(ORDER_BOOK_BUILD_BENCHMARKS)
+  # Google Benchmark defaults BENCHMARK_ENABLE_TESTING to ON, which registers
+  # ~72 of *its* tests with CTest — including timing-sensitive ones that are
+  # flaky on shared CI runners. We only want the benchmark library itself, so
+  # `ctest` runs this project's cases and nothing else.
+  set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+  set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+  set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+
   FetchContent_Declare(
     benchmark
     URL https://github.com/google/benchmark/archive/v1.7.1.zip
