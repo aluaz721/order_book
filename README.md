@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/aluaz721/order-book/actions/workflows/ci.yml/badge.svg)](https://github.com/aluaz721/order-book/actions/workflows/ci.yml)
 
-A high-performance limit order book engine written in C++17, exposed to Python via pybind11 and driven by a FastAPI backend with a React dashboard for interactive simulation.
+A high-performance limit order book engine written in C++17, exposed to Python via pybind11 and driven by a FastAPI backend with a React dashboard for interactive simulation. The dashboard can also replay a recorded NASDAQ ITCH 5.0 session through the same engine and the same panels — see [Replay mode](#replay-mode).
 
 The core engine implements price-time priority FIFO matching against a red-black tree order book (`TreeOrderBook`). Orders submitted through the dashboard are matched by this engine — the API layer translates and serialises, but owns no matching logic of its own.
 
@@ -62,11 +62,12 @@ cpp/                        # C++17 engine — compiled as a static library
 bindings/python/            # pybind11 module source (order_book_bindings.cpp), compiled into
                             #   python/order_book/_order_book.*.so at build time
  
-tests/                      # pytest suite (48 tests) for the order_book Python package
+tests/                      # pytest suite (49 tests) for the order_book Python package
  
 pyproject.toml              # scikit-build-core config — `pip install .` builds the pybind11 extension
  
 python/
+  order_book_demo.ipynb     # Notebook walkthrough of the Python library
   order_book/               # The importable Python package (see "Python Library" above)
     __init__.py             #   re-exports the compiled _order_book submodule at the top level
     session.py              #   Session — engine + book + order queue for one symbol, all 7 types
@@ -78,14 +79,22 @@ python/
     app/
       main.py               #   FastAPI routes: REST endpoints + WebSocket book stream
       services.py           #   EngineBridge — adapter onto the C++ TreeOrderBook
+      replay.py             #   ReplayRunner — ITCH replay on its own book and thread
       models.py             #   Pydantic wire models
-    tests/                  #   pytest suite (42 tests) against the real engine
+    tests/                  #   pytest suite (60 tests) against the real engine
   .venv/
  
 frontend/
-  src/                      # React + Recharts dashboard (Vite)
+  src/                      # React dashboard (Vite), no component or chart library —
+                            #   order form, book panels, pending stops, fills, replay
+ 
+data/
+  synthetic_aapl.itch       # Generated ITCH 5.0 session (2,925 messages) — what the
+                            #   dashboard's replay mode points at by default. Committed,
+                            #   because the image copies it in; see "Replay mode" below.
  
 scripts/
+  generate_itch.py          # Writes the file above — deterministic, seeded, resizable
   plot_benchmarks.py        # Reads docs/bench_raw.json → writes figures to docs/bench_figures/
  
 docs/
@@ -104,7 +113,9 @@ docs/
 ## Architecture
 
 There are two ways into the engine. The dashboard takes the first; a full
-simulation (historical replay, strategies, stop orders) takes the second.
+simulation (historical replay, strategies, stop orders) takes the second. The
+dashboard's replay mode is the two composed: the simulation path, run on a
+background thread, feeding the same panels live trading draws.
 
 ```
 1. Dashboard path  (what the live demo runs)
@@ -162,6 +173,40 @@ StrategySource    ──┘          │                               │
    submitting from inside the fill callback would re-enter OrderBook::add()
    while it is still sweeping price levels. A cascade — a triggered stop whose
    fill crosses another stop — is drained iteratively in that one loop.
+
+3. Replay path  (the dashboard's replay mode — composes 1 and 2)
+──────────────────────────────────────────────────────────────
+   ── daemon thread ──────────────────────────────────────────────
+   HistoricalReplayer ──► SimulationEngine ──► TreeOrderBook
+                               │                    │   (its own book,
+                               │  on_snapshot ◄─────┘    not the live one)
+                               ▼
+                               frame built HERE, on this thread, between
+                               events, while the book is quiescent
+                               │
+                               ▼
+                               _frame — a plain dict, read under a lock
+                               │
+   ── asyncio serving thread ──│──────────────────────────────────
+                               ▼
+                               WebSocket /ws/book   (≤20 frames/s)
+
+   A replay owns its own book and its own engine, so starting one cannot
+   disturb orders a user has resting in the live book. SimulationEngine::run()
+   blocks for the whole session, so it runs on a daemon thread; the Python
+   binding for run() releases the GIL, which is what keeps the asyncio loop
+   serving WebSockets throughout.
+
+   The book is not thread-safe and the engine mutates it continuously on that
+   thread, so nothing outside it may read the book. The frame the UI needs is
+   therefore built inside the engine's own snapshot callback — on the engine
+   thread, between events, while the book is quiescent — and stored as a plain
+   dict that the serving thread reads under a lock. Frames keep the shape and
+   the type of a live frame, so the dashboard renders a replay with no special
+   handling.
+
+   Frames are throttled to 20/second: the engine emits one snapshot per event,
+   which at demo pacing is far more than a browser needs.
 ```
 
 ```
@@ -172,6 +217,70 @@ asks_     std::map<int64_t, LinkedListPriceLevel>                  O(1) best ask
 order_map_  std::unordered_map<order_id, {side, price, iterator}>  O(1) cancel
 ```
  
+---
+ 
+## Replay mode
+
+The dashboard can drive itself from a recorded ITCH 5.0 file instead of from
+typed orders: pick a file, pick a pacing, and the book panels, fills and stats
+fill from the replay over the same WebSocket channel live trading uses. A
+replay runs on its own book and its own thread — see
+[Architecture](#architecture), path 3 — so orders resting in the live book are
+untouched by one.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /replay/files` | Lists the `.itch` and `.bin` files at the top level of the data root (not recursive) |
+| `POST /replay/start` | Starts one — `{path, symbol, speed, fixed_ns}`; 409 if a replay is already running, 404 for an unknown file |
+| `GET /replay/status` | Progress and outcome; `null` when no replay has run this process |
+| `POST /replay/stop` | Stops the running replay and returns its final status; 404 when none is running |
+
+`GET /replay/status` reports `state`, `events_replayed` / `events_total`,
+`fills`, `elapsed_seconds` and `error`. `state` runs `starting` → `running` →
+`finished`, or to `stopped` on an explicit stop, or `error` with a message
+when the file cannot be parsed.
+
+**Pacing** — `speed` selects a `ReplaySpeed` on the underlying replayer:
+
+| `speed` | `ReplaySpeed` | Behaviour |
+|---|---|---|
+| `fixed` (default) | `FIXED_NS` | One event every `fixed_ns` ns — default 40 ms — ignoring the file's own gaps |
+| `fast` | `FAST` | No delay; replays as fast as the engine matches |
+| `realtime` | `REALTIME` | Reproduces the file's own inter-event gaps exactly |
+
+`fixed` is the default because it is the only one that looks right on a
+dashboard: `fast` finishes the committed file in a few seconds, and `realtime`
+faithfully reproduces real quiet stretches, which read as a stall. Both of
+those are discussed under [Known gaps](#known-gaps).
+
+**Where files come from** — `path` arrives over HTTP, so it is resolved against
+a data root and refused if it escapes: `ORDER_BOOK_DATA_DIR` when set,
+otherwise the repo's own `data/`. The image sets it explicitly to `/app/data`,
+because the fallback walks four parents up from `app/services.py` — the repo
+root in a checkout, but `/` in the container, where `/replay/files` would then
+find nothing.
+
+**The committed file** — `data/synthetic_aapl.itch` is generated, not recorded.
+NASDAQ's own samples are large and separately licensed, so
+[`scripts/generate_itch.py`](scripts/generate_itch.py) writes a small
+deterministic session in the same framing `HistoricalReplayer` parses
+(`[2-byte big-endian length][message]`). The committed file is 2,925 messages
+in ~98 KB — 1,409 adds, 777 executions, 308 deletes, 258 partial cancels and
+173 replaces, the five message types the replayer handles — seeded so every
+run replays identically.
+
+```bash
+python3 scripts/generate_itch.py --out data/synthetic_aapl.itch --events 3000
+```
+
+Adds in the generated session are always passive, which is what keeps the
+replayer's order-reference map in step with the book the engine builds. A
+crossing Add would desynchronise them: the book consumes the order, the
+replayer still believes it rests, and every later message against that
+reference is dropped. Trades therefore arrive as `'E'` executions against the
+resting order at the touch, which is also how real ITCH behaves — an order
+that would cross never rests, so it never appears as an Add at all.
+
 ---
  
 ## Engine API
@@ -454,6 +563,10 @@ in the final image, ~260 MB). The builder needs network access for CMake's
 `OFF` in `pyproject.toml` so GoogleTest and Google Benchmark are not fetched
 during an image build. The runtime stage ends with an `import order_book`
 check, so a broken extension fails the build rather than the first request.
+The final stage also copies `data/` in and sets `ORDER_BOOK_DATA_DIR=/app/data`,
+which is what makes replay files visible in the deployed container — the
+committed ITCH file has to be in the build context for that `COPY` to succeed,
+so it is tracked rather than generated at build time.
 
 **Frontend — Vercel**
 1. Vercel dashboard → New Project → import the same repo.
@@ -461,7 +574,7 @@ check, so a broken extension fails the build rather than the first request.
 3. Add an environment variable `VITE_API_BASE` set to the Render URL from above, with no trailing slash.
 4. Deploy.
 
-Locally via `docker compose up`, leave `VITE_API_BASE` unset — the Vite dev server proxies `/orders`, `/fills`, `/backtests`, `/health`, `/diagnostics`, and `/ws` straight to the `backend` container, so nothing else changes.
+Locally via `docker compose up`, leave `VITE_API_BASE` unset — the Vite dev server proxies `/orders`, `/fills`, `/backtests`, `/health`, `/diagnostics`, `/replay`, and `/ws` straight to the `backend` container, so nothing else changes.
 
 ### Tests
 
@@ -483,7 +596,7 @@ cmake --build build -j$(nproc)
 ctest --test-dir build --output-on-failure
 ```
 
-**Python package — 48 pytest cases** covering the binding layer (signatures,
+**Python package — 49 pytest cases** covering the binding layer (signatures,
 ownership transfer, callback wiring, the stop path, the strategy callback,
 validators), the `Session` façade organised by order type, and the
 microstructure helpers:
@@ -493,12 +606,21 @@ pip install -e ".[test]" --no-build-isolation
 pytest                      # runs ./tests, per pyproject's testpaths
 ```
 
-**Backend — 42 pytest cases** driving `EngineBridge` and the HTTP/WebSocket
-surface against the real compiled engine, not a stand-in. These are what
-catch a regression in the float↔basis-point conversion, the FIFO ordering the
-UI displays, or a projection that drifts from the engine's own book state —
-including through a stop trigger, where the order that enters the book is one
-the client never submitted.
+**Backend — 60 pytest cases** driving `EngineBridge` and the HTTP/WebSocket
+surface against the real compiled engine, not a stand-in: 29 over the bridge,
+16 over the routes, 15 over replay. These are what catch a regression in the
+float↔basis-point conversion, the FIFO ordering the UI displays, or a
+projection that drifts from the engine's own book state — including through a
+stop trigger, where the order that enters the book is one the client never
+submitted.
+
+The replay cases run the real file through the real engine on the real
+background thread: that a replay completes and moves the book, that its frames
+reach the WebSocket, that the live book is untouched by one, that a second
+start while one runs is a 409 and a stop with none running a 404, and that a
+path escaping the data root is refused (four traversal shapes), an unknown
+file is a 404, and a non-positive `fixed_ns` or an unrecognised `speed` fails
+schema validation.
 
 ```bash
 cd python/backend
@@ -592,29 +714,51 @@ before a correct pro-rata matcher can exist.
   means `stop()` is not observed until the current sleep ends. A replay with
   minute-long quiet periods is correspondingly slow to halt. The Python
   binding for `run()` releases the GIL, so the blocking is confined to the
-  thread that called it.
+  thread that called it — which is what lets the backend run a replay on a
+  daemon thread while still serving sockets. The dashboard's Stop inherits the
+  latency: `ReplayRunner.stop()` sets the engine's stop flag and joins with a
+  5-second timeout, then stops waiting and leaves the daemon thread to exit on
+  its own.
 - `REALTIME` reproduces the file's own gaps exactly, with no speed multiplier
   and no cap on a single gap. Real ITCH sessions contain long quiet stretches,
   so a demo over unfiltered data will appear to stall; `FIXED_NS` is the
-  better choice for a continuously-moving display.
+  better choice for a continuously-moving display, and is what
+  [Replay mode](#replay-mode) defaults to.
 - ITCH `'C'` (Order Executed with Price) is handled identically to `'E'`: the
   non-displayed execution price is not parsed despite the header claiming
   otherwise, the length guard uses `'E'`'s 31 bytes rather than `'C'`'s 36,
   and the `printable` flag is ignored.
-- No ITCH sample file is committed (`data/` is empty), so replay has to be
-  pointed at a file obtained separately.
+- No *real* ITCH sample is committed. NASDAQ's own files are large and
+  separately licensed, so what ships in `data/` is a generated stand-in (see
+  [Replay mode](#replay-mode)). It exercises the five message types the
+  replayer handles and is enough to drive the dashboard, but it is a seeded
+  random walk with passive-only adds — not real microstructure, and not a
+  substitute for a NASDAQ sample when judging replay fidelity or parser
+  coverage. Drop a real file into the data root to replay one.
+- The generator sidesteps the replayer's weakest spot rather than testing it:
+  because its adds never cross, it never produces the Add-that-would-cross
+  case where the replayer's order-reference map and the engine's book
+  disagree. A real file does contain crossing-adjacent sequences, so that path
+  is unexercised by anything that ships here.
 
 **Backtests**
 
-`POST /backtests` and `GET /backtests/{run_id}` exist to settle the route
-shape but report `status: "not_implemented"`. Running a backtest means driving
-`HistoricalReplayer` over an ITCH file, which the deployment has no way to
-obtain.
+`POST /backtests` and `GET /backtests/{run_id}` still exist to settle the
+route shape and still report `status: "not_implemented"`. Their stated reason
+is now stale: the response message claims no ITCH 5.0 data source is
+configured for this deployment, but [Replay mode](#replay-mode) ships one and
+drives it through the same `HistoricalReplayer` a backtest would use.
+
+What is genuinely missing is the part replay deliberately is not. A replay
+streams to a live dashboard and keeps only the last 50 fills; a backtest needs
+a run addressable after the fact — persisted fills, summary metrics, and a
+`run_id` whose result outlives the socket that watched it. The route shape is
+there; the run store behind it is not.
 
 **One book, one symbol**
 
 `EngineBridge` constructs a single `TreeOrderBook` for a single symbol
-(`"AAPL"`), and `TreeOrderBook` never compares an incoming order's `symbol`
+(`"AAPL"`) for live trading, and `TreeOrderBook` never compares an incoming order's `symbol`
 field against its own — it stamps its own symbol onto the fills it emits. So
 an order posted with any other `symbol` is matched against that one book:
 
@@ -630,6 +774,12 @@ boundary (the service is single-book by construction, so this is the honest
 contract), or hold a registry of books keyed by symbol and route to one —
 nothing in the engine prevents the second, since `TreeOrderBook` already
 takes its symbol at construction.
+
+A replay does construct a second `TreeOrderBook`, but that is isolation rather
+than routing: the two books never see each other's orders, and
+`ReplayRequest.symbol` selects which symbol the replay filters the *file* by,
+which is a different thing from the live book's symbol. Neither book consults
+an incoming order's symbol field.
 
 **Other**
 
