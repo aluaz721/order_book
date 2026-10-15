@@ -212,6 +212,14 @@ class EngineBridge:
         self._runs: Dict[str, BacktestRun] = {}
         self._connections: Set[WebSocket] = set()
 
+        # The loop uvicorn serves on. Captured at startup (see bind_loop)
+        # because broadcasts originate from threads that have no loop of
+        # their own: FastAPI runs `def` endpoints in a threadpool, and a
+        # replay drives the engine from a background thread. Those threads
+        # have to hand the coroutine back to *this* loop — the one that owns
+        # the WebSockets — rather than start one of their own.
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+
     # ── Engine callbacks ──────────────────────────────────────────────────────
     #
     # These run on whichever thread called into the engine, inside add() /
@@ -684,19 +692,58 @@ class EngineBridge:
 
     # ── WebSocket ─────────────────────────────────────────────────────────────
 
-    def _schedule_broadcast(self) -> None:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
+    def bind_loop(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+        """Record the event loop that owns the WebSocket connections.
 
-        if loop is not None and loop.is_running():
-            loop.create_task(self._broadcast())
+        Called once from the app's startup hook, on the serving loop. Every
+        off-loop broadcast is marshalled back to it.
+        """
+        self._loop = loop or asyncio.get_running_loop()
+
+    def _schedule_broadcast(self) -> None:
+        """Push a snapshot to every connected client, from any thread.
+
+        Three callers, three hand-offs:
+
+        * the serving loop itself (an `async def` endpoint) — schedule
+          directly with create_task;
+        * a FastAPI threadpool worker running a `def` endpoint — no running
+          loop here, so marshal onto the serving loop;
+        * the engine thread during a replay — same as above.
+
+        The previous implementation called `asyncio.run()` on the no-loop
+        path, which built a *new* event loop and awaited `send_text()` on
+        WebSockets owned by uvicorn's loop. Touching a socket from a loop
+        that does not own it is undefined: the frames either never arrive or
+        race against the owning loop's writes. Every `def` endpoint took that
+        path, so live order updates only reached the UI via the 5-second
+        keep-alive resend in connect() rather than immediately.
+        """
+        try:
+            running = asyncio.get_running_loop()
+        except RuntimeError:
+            running = None
+
+        if running is not None:
+            running.create_task(self._broadcast())
             return
 
-        asyncio.run(self._broadcast())
+        loop = self._loop
+        if loop is None or loop.is_closed():
+            # No server running — a unit test driving the bridge directly.
+            # There are no WebSocket clients to notify, so drop it rather
+            # than spin up a loop that owns nothing.
+            return
+
+        asyncio.run_coroutine_threadsafe(self._broadcast(), loop)
 
     async def connect(self, websocket: WebSocket) -> None:
+        # Belt and braces: this coroutine runs on the serving loop, so if the
+        # startup hook never fired (a test mounting the app by hand, say) this
+        # still binds the right loop before any broadcast needs it.
+        if self._loop is None:
+            self.bind_loop()
+
         await websocket.accept()
         self._connections.add(websocket)
         await websocket.send_text(self._snapshot_json())

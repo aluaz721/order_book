@@ -388,3 +388,66 @@ def test_validators_report_the_same_verdicts_the_engine_uses():
         ob.Order(id=4, symbol="AAPL", side=ob.Side.ASK,
                  type=ob.OrderType.STOP, price=1_490_000, quantity=10), book)
     assert stop.valid
+
+
+# ── Threading / GIL ───────────────────────────────────────────────────────────
+
+def test_engine_run_releases_the_gil(tmp_path):
+    """A paced replay must not freeze other Python threads.
+
+    SimulationEngine.run() blocks for the whole simulation and, with a paced
+    HistoricalReplayer, sleeps between events. Without
+    py::call_guard<py::gil_scoped_release> on the binding it would hold the
+    GIL throughout — under uvicorn that stops the asyncio loop from
+    servicing WebSockets or HTTP for the entire replay.
+
+    Asserts a lower bound on the watcher's progress only: an upper bound
+    would be measuring the machine's scheduler rather than the binding.
+    """
+    import threading
+    import time
+
+    path = tmp_path / "paced.itch"
+    path.write_bytes(b"".join(
+        _framed(_itch_add(100 + i, "B", 100, "AAPL", 1_500_000 + i,
+                          1_000_000_000 + i * 1_000_000))
+        for i in range(10)))
+
+    config = ob.HistoricalReplayerConfig()
+    config.path = str(path)
+    config.speed = ob.ReplaySpeed.FIXED_NS
+    config.fixed_ns = 5_000_000            # 5ms per event -> ~50ms total
+
+    sim_config = ob.SimulationConfig()
+    sim_config.symbol = "AAPL"
+
+    engine = ob.SimulationEngine(
+        sim_config, ob.TreeOrderBook("AAPL", ob.FIFOMatcher()))
+    engine.add_source(ob.HistoricalReplayer(config))
+
+    ticks = 0
+    stop = threading.Event()
+
+    def watcher():
+        nonlocal ticks
+        while not stop.is_set():
+            ticks += 1
+            time.sleep(0.001)
+
+    worker = threading.Thread(target=watcher, daemon=True)
+    worker.start()
+
+    start = time.perf_counter()
+    engine.run()
+    elapsed = time.perf_counter() - start
+
+    stop.set()
+    worker.join(timeout=1)
+
+    assert engine.orders_processed() == 10
+    # Pacing actually applied (10 events x 5ms), so the GIL was genuinely
+    # held-or-released across a meaningful window rather than a few micros.
+    assert elapsed > 0.03, f"replay was not paced (took {elapsed:.3f}s)"
+    # The watcher kept getting scheduled while run() was sleeping.
+    assert ticks > 3, f"GIL held during run(): watcher ran only {ticks} times"
+

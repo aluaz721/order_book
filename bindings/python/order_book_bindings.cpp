@@ -382,7 +382,10 @@ PYBIND11_MODULE(_order_book, m) {
     // delay is deliberate — see strategy_source.hpp.
     //
     // The callback runs synchronously on the thread that called
-    // SimulationEngine.run(), which holds the GIL for the duration of the run.
+    // SimulationEngine.run(). That thread does NOT hold the GIL for the run
+    // (see run()'s call_guard below) — pybind11 re-acquires it around each
+    // invocation of this callback, so the callback itself is free to touch
+    // Python state, but it must not block: the engine loop is waiting on it.
 
     py::class_<StrategySource, OrderSource, py::smart_holder>(m, "StrategySource")
         .def(py::init<StrategySource::StrategyCallback, std::string>(),
@@ -418,7 +421,15 @@ PYBIND11_MODULE(_order_book, m) {
         .def(py::init<SimulationConfig, std::unique_ptr<OrderBookInterface>>(),
              py::arg("config"), py::arg("book"))
         .def("add_source", &SimulationEngine::add_source, py::arg("source"))
-        .def("run", &SimulationEngine::run)
+        // run() blocks for the whole simulation, and a paced HistoricalReplayer
+        // sleeps inside it. Holding the GIL for that would freeze every other
+        // Python thread in the process — under uvicorn that means the asyncio
+        // loop stops servicing WebSockets and HTTP for the duration of the run.
+        // Releasing it lets the caller drive run() on a worker thread and still
+        // serve requests; pybind11 re-acquires the GIL inside each callback
+        // trampoline, so set_fill_callback() and friends keep working, and
+        // stop() stays callable from another thread.
+        .def("run", &SimulationEngine::run, py::call_guard<py::gil_scoped_release>())
         .def("stop", &SimulationEngine::stop)
         .def("reset", &SimulationEngine::reset)
         .def("set_fill_callback", &SimulationEngine::set_fill_callback, py::arg("callback"))

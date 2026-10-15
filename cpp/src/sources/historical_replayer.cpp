@@ -1,10 +1,12 @@
 #include "../../include/order_book/sources/historical_replayer.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -315,8 +317,60 @@ uint64_t HistoricalReplayer::next_timestamp() const noexcept {
     return std::numeric_limits<uint64_t>::max();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// pace()
+//
+// Sleeps for however long config_.speed says should pass before `event_ts` is
+// released to the caller.
+//
+//   FAST       Returns immediately — backtests want results, not wall time.
+//   FIXED_NS   A constant config_.fixed_ns between consecutive events,
+//              regardless of what the file's own timestamps say. Deterministic
+//              pacing for demos and recordings.
+//   REALTIME   The gap between this event and the previous one, as recorded in
+//              the file, reproducing the session's original rhythm.
+//
+// The first event out is never delayed: there is nothing to measure a gap
+// from, and since ITCH timestamps are nanoseconds since midnight rather than
+// epoch time, treating the first one as a delay would sleep for hours.
+//
+// A file whose timestamps go backwards (malformed, or interleaved from more
+// than one session) yields no sleep for that event rather than an enormous
+// one from unsigned wraparound.
+// ─────────────────────────────────────────────────────────────────────────────
+
+void HistoricalReplayer::pace(uint64_t event_ts) {
+    if (config_.speed == ReplaySpeed::FAST) return;
+
+    uint64_t delay_ns = 0;
+
+    if (config_.speed == ReplaySpeed::FIXED_NS) {
+        delay_ns = config_.fixed_ns;
+    } else { // REALTIME
+        if (have_emitted_ && event_ts > last_emitted_ts_) {
+            delay_ns = event_ts - last_emitted_ts_;
+        }
+    }
+
+    // FIXED_NS delays the first event too — the delay is a property of the
+    // configured cadence, not of a gap between two events — but REALTIME has
+    // no gap to work with until a second event exists.
+    if (config_.speed == ReplaySpeed::REALTIME && !have_emitted_) {
+        delay_ns = 0;
+    }
+
+    if (delay_ns > 0) {
+        std::this_thread::sleep_for(std::chrono::nanoseconds(delay_ns));
+    }
+}
+
 std::optional<SourceEvent> HistoricalReplayer::next_order(uint64_t /*current_time*/) {
     if (!lookahead_) return std::nullopt;
+
+    pace(lookahead_->timestamp);
+
+    last_emitted_ts_ = lookahead_->timestamp;
+    have_emitted_    = true;
 
     std::optional<SourceEvent> event = std::move(lookahead_);
     lookahead_ = std::nullopt;

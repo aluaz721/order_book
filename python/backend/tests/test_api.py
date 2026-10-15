@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.main as main
+from app.models import OrderRequest
 from app.services import EngineBridge
 
 
@@ -66,6 +67,104 @@ def test_unknown_backtest_run_returns_404(client):
 def test_backtest_reports_not_implemented(client):
     body = client.post("/backtests", json={}).json()
     assert body["status"] == "not_implemented"
+
+
+def test_websocket_receives_updates_driven_from_a_background_thread(client):
+    """A broadcast raised off the serving loop still reaches the client.
+
+    This is the path a replay takes: the engine runs on its own thread, so
+    `_schedule_broadcast` finds no running loop and must hand the coroutine
+    to the loop that owns the WebSocket.
+
+    Note this does NOT by itself prove the hand-off is correct — TestClient
+    backs its WebSocket with an in-memory queue, so even the old
+    `asyncio.run()` implementation (a second loop touching a socket it does
+    not own) delivers the frame here. The cross-loop hazard only bites under
+    a real uvicorn server. `test_broadcast_from_a_worker_thread_uses_the_
+    serving_loop` below is the regression test for that; this one covers the
+    ordinary expectation that an off-loop submission neither raises nor
+    hangs.
+    """
+    import threading
+
+    with client.websocket_connect("/ws/book") as ws:
+        assert ws.receive_json()["type"] == "snapshot"
+
+        error: list[BaseException] = []
+
+        def submit_off_loop():
+            try:
+                main.bridge.submit_order(OrderRequest(
+                    side="buy", price=101.0, quantity=7,
+                    order_type="limit", symbol="AAPL"))
+            except BaseException as exc:          # pragma: no cover
+                error.append(exc)
+
+        worker = threading.Thread(target=submit_off_loop)
+        worker.start()
+        worker.join(timeout=5)
+
+        assert not error, f"submission from a worker thread raised {error}"
+        assert not worker.is_alive(), "submission from a worker thread hung"
+
+        # Must arrive because the broadcast was marshalled correctly — not
+        # because connect()'s 5-second keep-alive eventually fired.
+        update = ws.receive_json()
+        assert update["book"]["bids"][0]["price"] == 101.0
+        assert update["book"]["bids"][0]["quantity"] == 7
+
+
+def test_bridge_binds_the_serving_loop_at_startup(client):
+    """lifespan hands the bridge the loop uvicorn serves on."""
+    assert main.bridge._loop is not None
+    assert not main.bridge._loop.is_closed()
+
+
+def test_broadcast_from_a_worker_thread_uses_the_serving_loop(client, monkeypatch):
+    """Off-loop broadcasts must be marshalled, never run on a fresh loop.
+
+    The regression this guards: `_schedule_broadcast` used to fall back to
+    `asyncio.run(self._broadcast())` whenever it could not find a running
+    loop, which is every call from a FastAPI threadpool worker and every
+    call from a replay's engine thread. That builds a second event loop and
+    awaits `send_text()` on WebSockets owned by uvicorn's loop.
+
+    TestClient's in-memory socket hides the consequence, so assert on the
+    mechanism instead: `asyncio.run` must not be reached, and the coroutine
+    must be submitted to the bound loop.
+    """
+    import asyncio
+    import threading
+
+    def explode(*args, **kwargs):                       # pragma: no cover
+        raise AssertionError(
+            "_schedule_broadcast built a new event loop instead of "
+            "marshalling onto the serving loop")
+
+    monkeypatch.setattr(asyncio, "run", explode)
+
+    submitted: list[object] = []
+    real_submit = asyncio.run_coroutine_threadsafe
+
+    def record(coro, loop):
+        submitted.append(loop)
+        return real_submit(coro, loop)
+
+    monkeypatch.setattr(asyncio, "run_coroutine_threadsafe", record)
+
+    with client.websocket_connect("/ws/book") as ws:
+        ws.receive_json()
+        serving_loop = main.bridge._loop
+
+        worker = threading.Thread(target=lambda: main.bridge.submit_order(
+            OrderRequest(side="buy", price=102.0, quantity=3,
+                         order_type="limit", symbol="AAPL")))
+        worker.start()
+        worker.join(timeout=5)
+        assert not worker.is_alive()
+
+    assert submitted, "broadcast was never handed to the serving loop"
+    assert all(loop is serving_loop for loop in submitted)
 
 
 def test_websocket_pushes_snapshot_on_connect_and_after_an_order(client):

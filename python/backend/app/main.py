@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -12,7 +14,18 @@ from .models import (
 )
 from .services import EngineBridge
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Hand the bridge the loop uvicorn serves on. Broadcasts raised from a
+    # threadpool worker or the engine thread are marshalled back onto it —
+    # see EngineBridge._schedule_broadcast.
+    bridge.bind_loop()
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Order Book Dashboard API",
     version="0.3.0",
     description=(

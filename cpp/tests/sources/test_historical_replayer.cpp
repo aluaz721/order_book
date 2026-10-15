@@ -5,7 +5,9 @@
 #include "../../include/order_book/engine/simulation_engine.hpp"
 #include "../../include/order_book/sources/historical_replayer.hpp"
 
+#include <chrono>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -328,6 +330,127 @@ TEST(HistoricalReplayerTest, NonOrderMessageTypesAreSkippedSilently) {
     EXPECT_EQ(engine.historical_replayer()->orders_replayed(), 1u); // only the Add
     EXPECT_EQ(engine.historical_replayer()->orders_skipped(), 0u);  // S isn't "skipped", it's not an order event
     EXPECT_TRUE(engine.book().has_order(1));
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pacing (ReplaySpeed)
+//
+// These assert LOWER bounds on elapsed wall time only. An upper bound would
+// be measuring the CI runner's scheduler rather than the replayer: sleep_for
+// guarantees "at least", and a loaded shared runner can overshoot by a lot.
+// Delays are kept to single-digit milliseconds so the suite stays quick.
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace {
+
+// Four adds, 10ms apart on the file's own clock.
+std::string build_paced_file() {
+    std::string file;
+    const uint64_t base = 1'000'000'000ULL;
+    const uint64_t step =    10'000'000ULL;  // 10ms in nanoseconds
+    for (int i = 0; i < 4; ++i) {
+        append_framed(file, build_add(100 + i, 'B', 100, "AAPL",
+                                      1500000 + i, base + step * i));
+    }
+    return file;
+}
+
+// Drains every event from a replayer and returns how long that took.
+std::chrono::nanoseconds drain(HistoricalReplayer& replayer) {
+    const auto start = std::chrono::steady_clock::now();
+    while (!replayer.exhausted() || replayer.next_timestamp() !=
+           std::numeric_limits<uint64_t>::max()) {
+        if (!replayer.next_order(0).has_value()) break;
+    }
+    return std::chrono::steady_clock::now() - start;
+}
+
+} // namespace
+
+TEST(HistoricalReplayerTest, FastSpeedDoesNotSleep) {
+    const std::string path = write_temp_itch_file(build_paced_file(), "pace_fast");
+
+    HistoricalReplayer::Config config;
+    config.path  = path;
+    config.speed = ReplaySpeed::FAST;
+
+    HistoricalReplayer replayer(config);
+    const auto elapsed = drain(replayer);
+
+    // The file spans 30ms of its own clock. FAST must ignore that entirely.
+    EXPECT_LT(elapsed, std::chrono::milliseconds(30));
+}
+
+TEST(HistoricalReplayerTest, FixedNsSpeedDelaysEveryEventByTheConfiguredGap) {
+    const std::string path = write_temp_itch_file(build_paced_file(), "pace_fixed");
+
+    HistoricalReplayer::Config config;
+    config.path     = path;
+    config.speed    = ReplaySpeed::FIXED_NS;
+    config.fixed_ns = 3'000'000ULL;   // 3ms
+
+    HistoricalReplayer replayer(config);
+    const auto elapsed = drain(replayer);
+
+    // Four events, each delayed by the configured gap — the first included,
+    // since FIXED_NS is a cadence rather than a gap between two events.
+    EXPECT_GE(elapsed, std::chrono::milliseconds(12));
+}
+
+TEST(HistoricalReplayerTest, RealtimeSpeedSleepsTheFilesOwnInterEventGaps) {
+    const std::string path = write_temp_itch_file(build_paced_file(), "pace_realtime");
+
+    HistoricalReplayer::Config config;
+    config.path  = path;
+    config.speed = ReplaySpeed::REALTIME;
+
+    HistoricalReplayer replayer(config);
+    const auto elapsed = drain(replayer);
+
+    // Four events 10ms apart = three gaps. The first event is not delayed,
+    // so the floor is 30ms, not 40ms.
+    EXPECT_GE(elapsed, std::chrono::milliseconds(30));
+}
+
+TEST(HistoricalReplayerTest, RealtimeDoesNotStallOnTheFirstEventsAbsoluteTimestamp) {
+    // ITCH timestamps are ns since midnight. A single event late in the
+    // trading day must not be treated as a delay from midnight — that would
+    // sleep for hours. Here: 05:00:00 into the day.
+    std::string file;
+    const uint64_t five_hours_ns = 5ULL * 3600ULL * 1'000'000'000ULL;
+    append_framed(file, build_add(1, 'B', 100, "AAPL", 1500000, five_hours_ns));
+
+    const std::string path = write_temp_itch_file(file, "pace_first_event");
+
+    HistoricalReplayer::Config config;
+    config.path  = path;
+    config.speed = ReplaySpeed::REALTIME;
+
+    HistoricalReplayer replayer(config);
+    const auto elapsed = drain(replayer);
+
+    EXPECT_LT(elapsed, std::chrono::seconds(1));
+}
+
+TEST(HistoricalReplayerTest, RealtimeTreatsBackwardsTimestampsAsZeroDelay) {
+    // A second event timestamped BEFORE the first. Unsigned subtraction would
+    // wrap to an astronomically large sleep; the gap must clamp to zero.
+    std::string file;
+    const uint64_t base = 2'000'000'000ULL;
+    append_framed(file, build_add(1, 'B', 100, "AAPL", 1500000, base));
+    append_framed(file, build_add(2, 'B', 100, "AAPL", 1500001, base - 1'000'000'000ULL));
+
+    const std::string path = write_temp_itch_file(file, "pace_backwards");
+
+    HistoricalReplayer::Config config;
+    config.path  = path;
+    config.speed = ReplaySpeed::REALTIME;
+
+    HistoricalReplayer replayer(config);
+    const auto elapsed = drain(replayer);
+
+    EXPECT_LT(elapsed, std::chrono::seconds(1));
 }
 
 } // namespace order_book

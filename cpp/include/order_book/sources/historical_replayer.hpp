@@ -158,6 +158,10 @@ private:
     void advance();   // parse ITCH messages into lookahead_ until one survives
                        // filtering or EOF is reached
 
+    // Block for however long config_.speed says should elapse before the
+    // event at `event_ts` is handed to the caller. No-op in FAST mode.
+    void pace(uint64_t event_ts);
+
     Config              config_;
     std::string         name_ = "HistoricalReplayer";
 
@@ -169,6 +173,15 @@ private:
 
     std::optional<SourceEvent> lookahead_;   // next event ready to be returned
     bool                       exhausted_   = false;
+
+    // Pacing state (REALTIME / FIXED_NS). `last_emitted_ts_` is the ITCH
+    // timestamp of the previous event handed out, so REALTIME can sleep the
+    // gap between consecutive events. The first event is never delayed —
+    // there is no preceding event to measure a gap from, and ITCH timestamps
+    // are ns-since-midnight, so treating the first one as an offset from the
+    // start of the trading day would stall for hours.
+    uint64_t last_emitted_ts_ = 0;
+    bool     have_emitted_    = false;
 
     uint64_t messages_parsed_  = 0;
     uint64_t orders_replayed_  = 0;

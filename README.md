@@ -56,7 +56,7 @@ cpp/                        # C++17 engine — compiled as a static library
     sources/                # OrderSource interface: InteractiveSource, HistoricalReplayer, StrategySource
     engine/                 # SimulationEngine — priority-queue merge of all sources
   src/                      # Implementations corresponding to each header above
-  tests/                    # GoogleTest suite (113 tests): book, engine, stop manager, replayer
+  tests/                    # GoogleTest suite (118 tests): book, engine, stop manager, replayer
   benchmarks/               # Google Benchmark suite; output consumed by scripts/plot_benchmarks.py
  
 bindings/python/            # pybind11 module source (order_book_bindings.cpp), compiled into
@@ -465,15 +465,17 @@ Locally via `docker compose up`, leave `VITE_API_BASE` unset — the Vite dev se
 
 ### Tests
 
-**C++ — 113 GoogleTest cases.** 63 cover the book itself (all order types,
+**C++ — 118 GoogleTest cases.** 63 cover the book itself (all order types,
 matching, cancel, the FOK pre-check, IOC semantics, snapshot correctness,
 sequence monotonicity); 29 cover the `SimulationEngine` (each of the seven
 order types end to end, stop validation, source draining and ordering,
 the strategy feedback loop, heap bookkeeping, lifecycle and statistics);
 17 cover the `StopOrderManager` (submission and rejection, trigger conditions
-on both sides, STOP vs STOP_LIMIT conversion, cascades, cancellation); 4 cover
+on both sides, STOP vs STOP_LIMIT conversion, cascades, cancellation); 9 cover
 the ITCH replayer (full order lifecycle, symbol filtering, the time window,
-and skipping non-order message types).
+skipping non-order message types, and each replay speed — including that
+REALTIME doesn't stall on the first event's absolute timestamp or on a file
+whose timestamps go backwards).
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release
@@ -584,10 +586,17 @@ before a correct pro-rata matcher can exist.
 
 **Historical replayer**
 
-- `ReplaySpeed::REALTIME` and `FIXED_NS` are documented, stored in `Config`,
-  and bound into Python, but `historical_replayer.cpp` never reads
-  `config_.speed` or `config_.fixed_ns`. There is no pacing anywhere: replay
-  is always as fast as the CPU allows.
+- Replay sleeps on the calling thread. `SimulationEngine::run()` pulls events
+  one at a time, so a `REALTIME` or `FIXED_NS` replayer blocks the engine loop
+  for the duration of each gap — which is the point when driving a UI, but it
+  means `stop()` is not observed until the current sleep ends. A replay with
+  minute-long quiet periods is correspondingly slow to halt. The Python
+  binding for `run()` releases the GIL, so the blocking is confined to the
+  thread that called it.
+- `REALTIME` reproduces the file's own gaps exactly, with no speed multiplier
+  and no cap on a single gap. Real ITCH sessions contain long quiet stretches,
+  so a demo over unfiltered data will appear to stall; `FIXED_NS` is the
+  better choice for a continuously-moving display.
 - ITCH `'C'` (Order Executed with Price) is handled identically to `'E'`: the
   non-displayed execution price is not parsed despite the header claiming
   otherwise, the length guard uses `'E'`'s 31 bytes rather than `'C'`'s 36,
@@ -601,6 +610,26 @@ before a correct pro-rata matcher can exist.
 shape but report `status: "not_implemented"`. Running a backtest means driving
 `HistoricalReplayer` over an ITCH file, which the deployment has no way to
 obtain.
+
+**One book, one symbol**
+
+`EngineBridge` constructs a single `TreeOrderBook` for a single symbol
+(`"AAPL"`), and `TreeOrderBook` never compares an incoming order's `symbol`
+field against its own — it stamps its own symbol onto the fills it emits. So
+an order posted with any other `symbol` is matched against that one book:
+
+```bash
+# Both of these trade against each other, in the AAPL book
+curl -X POST .../orders -d '{"side":"buy","price":100,"quantity":10,"symbol":"AAPL"}'
+curl -X POST .../orders -d '{"side":"sell","price":100,"quantity":10,"symbol":"MSFT"}'
+```
+
+The dashboard's Symbol input is therefore cosmetic, and `OrderRequest.symbol`
+is accepted but not honoured. Two ways out: reject a mismatch at the API
+boundary (the service is single-book by construction, so this is the honest
+contract), or hold a registry of books keyed by symbol and route to one —
+nothing in the engine prevents the second, since `TreeOrderBook` already
+takes its symbol at construction.
 
 **Other**
 
