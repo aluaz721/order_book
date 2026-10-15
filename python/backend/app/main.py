@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +12,8 @@ from .models import (
     FillRecord,
     OrderRequest,
     OrderSubmissionResponse,
+    ReplayRequest,
+    ReplayStatus,
 )
 from .services import EngineBridge
 
@@ -90,6 +93,32 @@ def create_backtest(request: BacktestRequest) -> BacktestRun:
 @app.get("/backtests/{run_id}", response_model=BacktestRun)
 def get_backtest(run_id: str) -> BacktestRun:
     return bridge.get_backtest(run_id)
+
+
+# ── Historical replay ─────────────────────────────────────────────────────────
+#
+# Drives the dashboard from a recorded ITCH 5.0 file. The replay runs on its
+# own book, so a user's resting orders survive it untouched, and streams
+# through the same /ws/book channel as live trading.
+
+@app.get("/replay/files", response_model=list[str])
+def list_replay_files() -> list[str]:
+    return bridge.available_replays()
+
+
+@app.post("/replay/start", response_model=ReplayStatus)
+def start_replay(request: ReplayRequest) -> ReplayStatus:
+    return bridge.start_replay(request)
+
+
+@app.post("/replay/stop", response_model=ReplayStatus)
+def stop_replay() -> ReplayStatus:
+    return bridge.stop_replay()
+
+
+@app.get("/replay/status", response_model=Optional[ReplayStatus])
+def replay_status() -> Optional[ReplayStatus]:
+    return bridge.replay_status()
 
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────

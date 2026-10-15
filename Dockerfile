@@ -29,8 +29,13 @@ RUN pip install --no-cache-dir build \
 # ─────────────────────────────────────────────────────────────────────────────
 FROM python:3.12-slim
 
+# ORDER_BOOK_DATA_DIR is where the replay endpoints look for ITCH files, and it
+# has to be set explicitly here: EngineBridge's fallback is four parents up from
+# app/services.py, which resolves to the repo root in a checkout but to "/" in
+# this image's layout. Without it /replay/files finds nothing.
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    ORDER_BOOK_DATA_DIR=/app/data
 
 WORKDIR /app
 
@@ -42,6 +47,9 @@ RUN pip install --no-cache-dir /wheels/*.whl \
     && rm -rf /wheels
 
 COPY python/backend /app/backend
+# Replay fixtures. Small and committed, so the deployed dashboard has something
+# to play back — the service only ever reads from this directory.
+COPY data/ /app/data/
 WORKDIR /app/backend
 
 # Fail the build rather than the first request if the extension didn't land.

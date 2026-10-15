@@ -30,15 +30,20 @@ from the projection.
 
 import asyncio
 import json
+import os
 import threading
 import time
 import uuid
+from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 import order_book as ob
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 
+from .replay import ReplayRunner
 from .models import (
+    ReplayRequest,
+    ReplayStatus,
     BacktestRequest,
     BacktestRun,
     BookLevel,
@@ -219,6 +224,24 @@ class EngineBridge:
         # have to hand the coroutine back to *this* loop — the one that owns
         # the WebSockets — rather than start one of their own.
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+
+        # Set while a historical replay is driving the dashboard. The replay
+        # owns a separate book, so the live one below keeps whatever the user
+        # had resting and is handed back untouched when the replay ends.
+        self._replay: Optional[ReplayRunner] = None
+
+        # Guards start/stop so two concurrent requests cannot both create a
+        # runner. Deliberately not `_lock`: that one is held while the engine
+        # is touched, and stop_replay() joins a thread that may be mid-
+        # callback, which would deadlock against it.
+        self._replay_lock = threading.Lock()
+
+        # Replays may only read from here. ORDER_BOOK_DATA_DIR lets the
+        # deployment point at a mounted volume; the default is the repo's
+        # own data/ directory, four levels up from this file.
+        self._replay_root = Path(os.environ.get(
+            "ORDER_BOOK_DATA_DIR",
+            Path(__file__).resolve().parents[3] / "data"))
 
     # ── Engine callbacks ──────────────────────────────────────────────────────
     #
@@ -591,6 +614,83 @@ class EngineBridge:
                                 detail=f"No backtest run with id {run_id}.")
         return run
 
+    # ── Historical replay ─────────────────────────────────────────────────────
+
+    def start_replay(self, req: ReplayRequest) -> ReplayStatus:
+        """Begin replaying an ITCH file into the dashboard.
+
+        The file must sit inside the configured data directory. Replay takes
+        a path from an HTTP caller, so it is resolved and checked against
+        that root — otherwise the endpoint would read any file the server
+        process can reach.
+        """
+        path = self._resolve_replay_path(req.path)
+
+        with self._replay_lock:
+            if self._replay is not None and not self._replay.finished:
+                raise HTTPException(
+                    status_code=409,
+                    detail="A replay is already running. Stop it first.")
+
+            if req.speed == "fixed" and req.fixed_ns <= 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail="fixed_ns must be positive when speed is 'fixed'.")
+
+            try:
+                runner = ReplayRunner(
+                    path=path, symbol=req.symbol, speed=req.speed,
+                    fixed_ns=req.fixed_ns, on_update=self._schedule_broadcast)
+            except OSError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Could not open {path.name}: {exc}") from exc
+
+            self._replay = runner
+            runner.start()
+
+        self._schedule_broadcast()
+        return ReplayStatus(**runner.status())
+
+    def stop_replay(self) -> ReplayStatus:
+        with self._replay_lock:
+            runner = self._replay
+            if runner is None:
+                raise HTTPException(status_code=404,
+                                    detail="No replay has been started.")
+            runner.stop()
+            status = runner.status()
+
+        self._schedule_broadcast()
+        return ReplayStatus(**status)
+
+    def replay_status(self) -> Optional[ReplayStatus]:
+        runner = self._replay
+        return ReplayStatus(**runner.status()) if runner is not None else None
+
+    def available_replays(self) -> List[str]:
+        """ITCH files the server is willing to replay."""
+        root = self._replay_root
+        if not root.is_dir():
+            return []
+        return sorted(p.name for p in root.iterdir()
+                      if p.is_file() and p.suffix in (".itch", ".bin"))
+
+    def _resolve_replay_path(self, name: str) -> Path:
+        root = self._replay_root.resolve()
+        candidate = (root / name).resolve()
+
+        # `name` arrives over HTTP, so confine it to the data directory —
+        # "../../etc/passwd" resolves outside the root and is rejected here.
+        if not candidate.is_relative_to(root):
+            raise HTTPException(
+                status_code=400,
+                detail="Replay path must be a file inside the data directory.")
+        if not candidate.is_file():
+            raise HTTPException(
+                status_code=404, detail=f"No such replay file: {name}")
+        return candidate
+
     # ── Snapshot ──────────────────────────────────────────────────────────────
 
     def _build_snapshot(self) -> BookSnapshot:
@@ -768,6 +868,25 @@ class EngineBridge:
         self._connections -= dead
 
     def _snapshot_json(self) -> str:
+        """The frame pushed to every client.
+
+        While a replay runs the book and fills come from it instead of the
+        live engine. The message keeps the same shape and the same
+        `type: "snapshot"`, so the dashboard renders a replay with no
+        special handling — it only reads `replay` to show the banner and
+        progress.
+        """
+        replay = self._replay
+        if replay is not None:
+            book = replay.snapshot()
+            if book is not None:
+                return json.dumps({
+                    "type": "snapshot",
+                    "book": book,
+                    "fills": list(reversed(replay.fills())),
+                    "replay": replay.status(),
+                })
+
         snap = self._build_snapshot()
         with self._lock:
             recent = [f.model_dump() for f in self._fills[-50:]]
@@ -775,4 +894,5 @@ class EngineBridge:
             "type": "snapshot",
             "book": snap.model_dump(),
             "fills": recent,
+            "replay": replay.status() if replay is not None else None,
         })

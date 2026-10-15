@@ -367,3 +367,72 @@ button {
     font-size: 0.9rem;
   }
 }
+
+/* ── Historical replay ───────────────────────────────────────────────────── */
+
+.replay-banner {
+  margin: 0 0 1rem;
+  padding: 0.7rem 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(217, 119, 6, 0.45);
+  background: rgba(120, 53, 15, 0.35);
+  color: #fcd34d;
+  font-size: 0.92rem;
+}
+
+.replay-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.replay-note,
+.replay-error {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.replay-note  { color: #94a3b8; }
+.replay-error { color: #fca5a5; }
+
+.replay-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.replay-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+  overflow: hidden;
+}
+
+.replay-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2563eb, #4f46e5);
+  transition: width 0.2s linear;
+}
+
+.replay-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  font-size: 0.85rem;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.replay-state {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+
+.replay-state-running,
+.replay-state-starting { color: #4ade80; }
+.replay-state-finished { color: #60a5fa; }
+.replay-state-stopped  { color: #94a3b8; }
+.replay-state-error    { color: #fca5a5; }

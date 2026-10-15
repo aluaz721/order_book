@@ -20,9 +20,10 @@ const fmtTime = () => {
 // ── useWebSocket hook ─────────────────────────────────────────────────────────
 
 function useOrderBookSocket() {
-  const [book, setBook]   = useState(null);
-  const [fills, setFills] = useState([]);
-  const [conn, setConn]   = useState('Connecting…');
+  const [book, setBook]     = useState(null);
+  const [fills, setFills]   = useState([]);
+  const [conn, setConn]     = useState('Connecting…');
+  const [replay, setReplay] = useState(null);
   const wsRef = useRef(null);
 
   useEffect(() => {
@@ -43,6 +44,10 @@ function useOrderBookSocket() {
         if (msg.type === 'snapshot') {
           setBook(msg.book);
           if (msg.fills) setFills(msg.fills.slice().reverse());
+          // Present on every frame: an object while a replay exists (in any
+          // state), null once the server has none. Driving straight off it
+          // keeps the banner in step even if a replay ends on its own.
+          setReplay(msg.replay ?? null);
         }
       };
     };
@@ -51,7 +56,7 @@ function useOrderBookSocket() {
     return () => { wsRef.current?.close(); };
   }, []);
 
-  return { book, fills, conn };
+  return { book, fills, conn, replay };
 }
 
 // ── OrderForm ─────────────────────────────────────────────────────────────────
@@ -334,6 +339,169 @@ function FillTable({ fills }) {
   );
 }
 
+// ── ReplayPanel ───────────────────────────────────────────────────────────────
+//
+// Replay streams through the same /ws/book channel as live trading, so the
+// book and fill panels need no replay-specific code — they just render the
+// snapshots that arrive. This panel owns the controls and makes it obvious
+// that what is on screen is recorded, not live.
+
+const SPEED_OPTIONS = [
+  { value: 'fixed',    label: 'Steady',    hint: 'Even gap between events' },
+  { value: 'realtime', label: 'Real time', hint: "The file's own timing" },
+  { value: 'fast',     label: 'As fast as possible', hint: 'No pacing at all' },
+];
+
+const PACE_OPTIONS = [
+  { value: 100_000_000, label: '0.1s' },
+  { value: 40_000_000,  label: '40ms' },
+  { value: 10_000_000,  label: '10ms' },
+  { value: 2_000_000,   label: '2ms' },
+];
+
+function ReplayPanel({ replay }) {
+  const [files, setFiles]   = useState([]);
+  const [file, setFile]     = useState('');
+  const [speed, setSpeed]   = useState('fixed');
+  const [pace, setPace]     = useState(40_000_000);
+  const [busy, setBusy]     = useState(false);
+  const [error, setError]   = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/replay/files`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((names) => {
+        if (cancelled) return;
+        setFiles(names);
+        setFile((current) => current || names[0] || '');
+      })
+      .catch(() => { if (!cancelled) setFiles([]); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const running = replay?.state === 'running' || replay?.state === 'starting';
+
+  const start = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/replay/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: file, symbol: 'AAPL',
+                               speed, fixed_ns: pace }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.detail ?? `Could not start replay (${res.status})`);
+      }
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const stop = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fetch(`${API_BASE}/replay/stop`, { method: 'POST' });
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const total    = replay?.events_total ?? 0;
+  const done     = replay?.events_replayed ?? 0;
+  const progress = total > 0 ? Math.min(100, (done / total) * 100) : 0;
+
+  if (files.length === 0 && !replay) {
+    return (
+      <div className="book-empty">
+        No replay files on the server. Generate one with
+        {' '}<code>python3 scripts/generate_itch.py</code>.
+      </div>
+    );
+  }
+
+  return (
+    <div className="replay-panel">
+      <div className="form-row">
+        <label className="field">
+          <span>File</span>
+          <select value={file} disabled={running}
+                  onChange={(e) => setFile(e.target.value)}>
+            {files.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+        </label>
+
+        <label className="field">
+          <span>Pacing</span>
+          <select value={speed} disabled={running}
+                  onChange={(e) => setSpeed(e.target.value)}>
+            {SPEED_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="field">
+          <span>Gap</span>
+          <select value={pace} disabled={running || speed !== 'fixed'}
+                  onChange={(e) => setPace(Number(e.target.value))}>
+            {PACE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </label>
+
+        {running ? (
+          <button type="button" className="btn-submit sell"
+                  onClick={stop} disabled={busy}>
+            Stop replay
+          </button>
+        ) : (
+          <button type="button" className="btn-submit buy"
+                  onClick={start} disabled={busy || !file}>
+            Start replay
+          </button>
+        )}
+      </div>
+
+      {speed === 'realtime' && !running && (
+        <p className="replay-note">
+          Real time reproduces the recorded gaps exactly, including quiet
+          stretches — the book may sit still for a while.
+        </p>
+      )}
+
+      {error && <p className="replay-error">{error}</p>}
+
+      {replay && (
+        <div className="replay-status">
+          <div className="replay-progress">
+            <div className="replay-progress-fill"
+                 style={{ width: `${progress}%` }} />
+          </div>
+          <div className="replay-meta">
+            <span className={`replay-state replay-state-${replay.state}`}>
+              {replay.state}
+            </span>
+            <span>{done.toLocaleString()} / {total.toLocaleString()} events</span>
+            <span>{replay.fills} fills</span>
+            <span>{replay.elapsed_seconds}s elapsed</span>
+          </div>
+          {replay.error && <p className="replay-error">{replay.error}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── StatsBar ──────────────────────────────────────────────────────────────────
 
 function StatsBar({ book, conn }) {
@@ -380,12 +548,14 @@ function StatsBar({ book, conn }) {
 // ── App ───────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const { book, fills, conn } = useOrderBookSocket();
+  const { book, fills, conn, replay } = useOrderBookSocket();
 
   const cancelOrder = useCallback(async (orderId) => {
     await fetch(`${API_BASE}/orders/${orderId}`, { method: 'DELETE' });
     // snapshot will arrive via WebSocket — no manual refresh needed
   }, []);
+
+  const replayActive = replay?.state === 'running' || replay?.state === 'starting';
 
   const bids = book?.bids ?? [];
   const asks = book?.asks ?? [];
@@ -404,13 +574,35 @@ export default function App() {
         </div>
       </header>
 
+      {/* ── Replay banner ── */}
+      {replayActive && (
+        <div className="replay-banner">
+          Replaying <strong>{replay.path.split('/').pop()}</strong> — the book
+          below is recorded market data, not live trading.
+        </div>
+      )}
+
       {/* ── Stats ── */}
       <StatsBar book={book} conn={conn} />
+
+      {/* ── Historical replay ── */}
+      <section className="section">
+        <h2 className="section-title">Historical Replay</h2>
+        <ReplayPanel replay={replay} />
+      </section>
 
       {/* ── Order injection ── */}
       <section className="section">
         <h2 className="section-title">Inject Order</h2>
-        <OrderForm />
+        {replayActive ? (
+          <div className="book-empty">
+            Paused while a replay is running. Your resting orders are
+            untouched — the replay runs on its own book — and the form
+            returns when it stops.
+          </div>
+        ) : (
+          <OrderForm />
+        )}
       </section>
 
       {/* ── Book panels ── */}

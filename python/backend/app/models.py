@@ -123,3 +123,32 @@ class BacktestRun(BaseModel):
     end_time: str
     depth: int
     message: str
+
+
+class ReplayRequest(BaseModel):
+    """Start a historical replay.
+
+    `path` is a file name inside the server's data directory, not a full
+    path — the service resolves it against that root and refuses anything
+    that escapes.
+    """
+
+    path: str = "synthetic_aapl.itch"
+    symbol: str = "AAPL"
+    speed: Literal["fast", "realtime", "fixed"] = "fixed"
+    # Gap between events for speed="fixed". 40ms reads as a lively but
+    # followable book; "realtime" ignores this and uses the file's own gaps.
+    fixed_ns: int = 40_000_000
+
+
+class ReplayStatus(BaseModel):
+    state: Literal["starting", "running", "finished", "stopped", "error"]
+    path: str
+    symbol: str
+    speed: str
+    fixed_ns: int
+    events_replayed: int
+    events_total: int
+    fills: int
+    elapsed_seconds: float
+    error: Optional[str] = None
