@@ -9,8 +9,23 @@ class OrderRequest(BaseModel):
     side: Literal["buy", "sell"]
     price: float = Field(..., gt=0)
     quantity: int = Field(..., gt=0)
-    order_type: Literal["limit", "market", "ioc", "fok"] = "limit"
+    order_type: Literal["limit", "market", "market_limit",
+                        "stop", "stop_limit", "ioc", "fok"] = "limit"
     symbol: str = "AAPL"
+
+    # Stop types only.
+    #
+    # `stop_price` is the trigger — the traded price that turns the order
+    # live. It falls back to `price` when omitted, so a stop can be posted
+    # with the same body shape as a limit order.
+    #
+    # `limit_price` is required for `stop_limit`: the price the LIMIT order it
+    # converts into carries. The engine's convention (order_validators.hpp) is
+    # `limit_price` <= `stop_price` for buys and >= for sells, which keeps the
+    # converted order passive; a body that breaks it comes back rejected with
+    # the engine's own explanation.
+    stop_price: Optional[float] = Field(None, gt=0)
+    limit_price: Optional[float] = Field(None, gt=0)
 
 
 class CancelRequest(BaseModel):
@@ -45,6 +60,26 @@ class RestingOrder(BaseModel):
     created_at: str
 
 
+class PendingStop(BaseModel):
+    """A STOP or STOP_LIMIT order accepted but not yet triggered.
+
+    Deliberately not a `RestingOrder`: a pending stop is held by the
+    StopOrderManager, outside the book, so it has no price level, no queue
+    position and no effect on depth or the touch. The UI lists these
+    separately for exactly that reason — otherwise an accepted stop would
+    look like an order that vanished.
+    """
+
+    order_id: int
+    side: Literal["buy", "sell"]
+    order_type: Literal["stop", "stop_limit"]
+    stop_price: float
+    limit_price: Optional[float]
+    quantity: int
+    symbol: str
+    created_at: str
+
+
 class FillRecord(BaseModel):
     sequence: int
     aggressive_order_id: int
@@ -64,6 +99,7 @@ class BookSnapshot(BaseModel):
     last_trade_price: Optional[float]
     sequence: int
     resting_orders: list[RestingOrder]   # full flat list — UI renders the panels
+    pending_stops: list[PendingStop] = Field(default_factory=list)
 
 
 class OrderSubmissionResponse(BaseModel):

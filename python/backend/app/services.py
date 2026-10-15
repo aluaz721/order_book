@@ -48,6 +48,7 @@ from .models import (
     FillRecord,
     OrderRequest,
     OrderSubmissionResponse,
+    PendingStop,
     RestingOrder,
 )
 
@@ -56,16 +57,23 @@ from .models import (
 _SIDE_TO_ENGINE = {"buy": ob.Side.BID, "sell": ob.Side.ASK}
 _SIDE_TO_WIRE = {ob.Side.BID: "buy", ob.Side.ASK: "sell"}
 
-# The UI offers these four. The engine also implements MARKET_LIMIT, STOP and
-# STOP_LIMIT; stops are deliberately absent here because they must be routed
-# through StopOrderManager, which has no Python binding yet — TreeOrderBook.add()
-# throws on them by design. See README "Known gaps".
+# All seven types the engine implements. STOP and STOP_LIMIT don't go to the
+# book — TreeOrderBook.add() throws on them by design, since a stop is a
+# conditional trigger rather than a resting order. They go to the
+# StopOrderManager this bridge owns; see _submit_stop() and _on_trigger().
 _TYPE_TO_ENGINE = {
     "limit": ob.OrderType.LIMIT,
     "market": ob.OrderType.MARKET,
+    "market_limit": ob.OrderType.MARKET_LIMIT,
+    "stop": ob.OrderType.STOP,
+    "stop_limit": ob.OrderType.STOP_LIMIT,
     "ioc": ob.OrderType.IMMEDIATE_OR_CANCEL,
     "fok": ob.OrderType.FILL_OR_KILL,
 }
+
+_ENGINE_TO_TYPE = {v: k for k, v in _TYPE_TO_ENGINE.items()}
+
+_STOP_TYPES = (ob.OrderType.STOP, ob.OrderType.STOP_LIMIT)
 
 # Engine cancel reasons, phrased for a human reading a flash message.
 _CANCEL_BLURB = {
@@ -108,21 +116,53 @@ class _OrderMeta:
         self.remaining = quantity
 
 
+class _StopMeta:
+    """A stop order held by the StopOrderManager, waiting for its trigger.
+
+    Separate from `_OrderMeta` because a pending stop has no presence in the
+    book at all — no level, no queue position, nothing `has_order()` would
+    answer yes to. The manager is the only authority on whether it still
+    exists, so `_build_snapshot()` checks `has_stop()` the way it checks
+    `has_order()` for resting orders.
+    """
+
+    __slots__ = ("order_id", "side", "order_type", "stop_price", "limit_price",
+                 "quantity", "symbol", "created_at")
+
+    def __init__(self, order_id: int, side: str, order_type: str,
+                 stop_price: float, limit_price: Optional[float],
+                 quantity: int, symbol: str, created_at: str):
+        self.order_id = order_id
+        self.side = side
+        self.order_type = order_type
+        self.stop_price = stop_price
+        self.limit_price = limit_price
+        self.quantity = quantity
+        self.symbol = symbol
+        self.created_at = created_at
+
+
 class _Outcome:
     """Events the engine emitted while processing one submit_order call.
 
     Callbacks fire synchronously inside `book.add()`, so this is filled in
     before `add()` returns and read immediately afterwards — always under
     `_lock`, so one in-flight submission at a time.
+
+    `triggers` collects the stops that fired as a consequence of this order's
+    trades: their converted orders are separate orders with their own ids, but
+    the submitter is the reason they exist, so the response mentions them.
     """
 
-    __slots__ = ("order_id", "filled", "cancel_reason", "ack_status")
+    __slots__ = ("order_id", "filled", "cancel_reason", "ack_status",
+                 "triggers")
 
     def __init__(self, order_id: int):
         self.order_id = order_id
         self.filled = 0
         self.cancel_reason: Optional[ob.CancelReason] = None
         self.ack_status: Optional[ob.OrderStatus] = None
+        self.triggers: List[int] = []
 
 
 # ── Bridge ────────────────────────────────────────────────────────────────────
@@ -145,7 +185,21 @@ class EngineBridge:
         self._book = ob.TreeOrderBook(symbol, ob.FIFOMatcher(), callbacks)
 
         self._next_order_id = 1
+
+        # Holds STOP / STOP_LIMIT orders outside the book until a trade
+        # crosses their price. It shares this bridge's id counter, so every
+        # id in the system — submitted or converted-from-a-stop — is unique
+        # and allocated in one place. The book is passed by reference and
+        # must outlive the manager; both die with this bridge.
+        self._stops = ob.StopOrderManager(
+            self._book,
+            on_trigger=self._on_trigger,
+            on_cancel=self._on_cancel,
+            next_order_id=self._claim_order_id,
+        )
+
         self._meta: Dict[int, _OrderMeta] = {}
+        self._pending_stops: Dict[int, _StopMeta] = {}
         self._fills: List[FillRecord] = []
         self._current: Optional[_Outcome] = None
 
@@ -153,6 +207,7 @@ class EngineBridge:
         # projection entries we've had to drop (should stay at 0).
         self._engine_updates = 0
         self._projection_repairs = 0
+        self._stops_triggered = 0
 
         self._runs: Dict[str, BacktestRun] = {}
         self._connections: Set[WebSocket] = set()
@@ -187,12 +242,57 @@ class EngineBridge:
                 event.aggressive_order_id == self._current.order_id:
             self._current.filled += event.fill_quantity
 
+        # This trade may have crossed a pending stop, but acting on it here is
+        # not allowed: the book is mid-match and submitting the triggered
+        # order would re-enter add() while it is still sweeping levels. Record
+        # it; the caller drains once the engine call has returned.
+        self._stops.record_trade(event.fill_price, event.timestamp)
+
     def _on_cancel(self, event) -> None:
         if event.reason in _TERMINAL_REASONS:
             self._meta.pop(event.order_id, None)
+            # Also the stop manager's own cancel callback: a cancelled pending
+            # stop never reached the book, so it only lives in this projection.
+            self._pending_stops.pop(event.order_id, None)
 
         if self._current is not None and event.order_id == self._current.order_id:
             self._current.cancel_reason = event.reason
+
+    def _on_trigger(self, event) -> None:
+        """A pending stop fired and is about to enter the book as a live order.
+
+        Called by the StopOrderManager *before* it submits the converted
+        order, which is what makes this the right place to register the
+        projection entry: the fills that submission produces look it up.
+        """
+        self._stops_triggered += 1
+        stop = self._pending_stops.pop(event.stop_order_id, None)
+
+        became_limit = event.converted_to == ob.OrderType.LIMIT
+
+        # A STOP becomes a MARKET order, which never rests — its projection
+        # entry is transient and gets removed by the fill or the no-liquidity
+        # cancel that follows. A STOP_LIMIT becomes a LIMIT at its limit
+        # price, which may well rest, so that is the price to show.
+        if became_limit and stop is not None and stop.limit_price is not None:
+            price = stop.limit_price
+        else:
+            price = ob.from_basis_points(event.trigger_trade_price)
+
+        self._meta[event.triggered_order_id] = _OrderMeta(
+            order_id=event.triggered_order_id,
+            side=_SIDE_TO_WIRE[event.side],
+            price=price,
+            # The type it became, not the type it was: a resting order
+            # labelled "stop_limit" would misdescribe what is in the book.
+            order_type=_ENGINE_TO_TYPE[event.converted_to],
+            symbol=stop.symbol if stop is not None else self._symbol,
+            created_at=time.strftime("%H:%M:%S"),
+            quantity=stop.quantity if stop is not None else 0,
+        )
+
+        if self._current is not None:
+            self._current.triggers.append(event.stop_order_id)
 
     def _on_book_update(self, snapshot) -> None:
         # The engine's authoritative "book changed" signal. The WebSocket
@@ -200,6 +300,16 @@ class EngineBridge:
         # thread with no event loop — the request handler schedules it once
         # the engine call has returned.
         self._engine_updates += 1
+
+    def _claim_order_id(self) -> int:
+        """Allocate the next order id. Caller holds `_lock`.
+
+        Also the StopOrderManager's id source, so the orders triggered stops
+        convert into are numbered from the same sequence as submitted ones.
+        """
+        order_id = self._next_order_id
+        self._next_order_id += 1
+        return order_id
 
     def _consume(self, order_id: int, quantity: int) -> None:
         meta = self._meta.get(order_id)
@@ -213,16 +323,31 @@ class EngineBridge:
 
     def submit_order(self, req: OrderRequest) -> OrderSubmissionResponse:
         engine_type = _TYPE_TO_ENGINE[req.order_type]
+        is_stop = engine_type in _STOP_TYPES
 
-        # MARKET orders ignore the price field entirely (order_validators.cpp
-        # skips the positive-price check for them), so don't pretend otherwise
-        # — the UI disables the input but still posts whatever was last typed.
-        price_bp = 0 if engine_type == ob.OrderType.MARKET \
-            else ob.to_basis_points(req.price)
+        if is_stop:
+            # For a stop, the engine's `price` field IS the trigger price;
+            # `limit_price` is what the converted LIMIT order will carry.
+            trigger = req.stop_price if req.stop_price is not None else req.price
+            price_bp = ob.to_basis_points(trigger)
+            limit_bp = (ob.to_basis_points(req.limit_price)
+                        if req.limit_price is not None else 0)
+            if engine_type == ob.OrderType.STOP_LIMIT and limit_bp <= 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail="stop_limit requires a positive limit_price",
+                )
+        else:
+            # MARKET orders ignore the price field entirely
+            # (order_validators.cpp skips the positive-price check for them),
+            # so don't pretend otherwise — the UI disables the input but still
+            # posts whatever was last typed.
+            price_bp = 0 if engine_type == ob.OrderType.MARKET \
+                else ob.to_basis_points(req.price)
+            limit_bp = 0
 
         with self._lock:
-            order_id = self._next_order_id
-            self._next_order_id += 1
+            order_id = self._claim_order_id()
 
             order = ob.Order(
                 id=order_id,
@@ -232,34 +357,132 @@ class EngineBridge:
                 price=price_bp,
                 quantity=req.quantity,
                 timestamp=time.time_ns(),
+                limit_price=limit_bp,
             )
 
-            # Registered before add() because fill/cancel callbacks fire
-            # *during* add() and look this entry up. If the order fully fills
-            # or is cancelled, those same callbacks remove it again.
-            self._meta[order_id] = _OrderMeta(
-                order_id=order_id,
-                side=req.side,
-                price=ob.from_basis_points(price_bp),
-                order_type=req.order_type,
-                symbol=req.symbol,
-                created_at=time.strftime("%H:%M:%S"),
-                quantity=req.quantity,
-            )
+            if is_stop:
+                # Validated here because the book can't help: it never sees a
+                # stop. validators.validate() is the same check
+                # SimulationEngine applies — the stop price has to be on the
+                # correct side of the market (or it would fire immediately)
+                # and limit_price consistent with it.
+                verdict = ob.validators.validate(order, self._book)
+                if not verdict.valid:
+                    # Rejected before the engine saw it. Nothing changed, so
+                    # no broadcast is owed.
+                    return OrderSubmissionResponse(
+                        accepted=False,
+                        order_id=order_id,
+                        status="rejected",
+                        message=(f"Stop order {order_id} rejected — "
+                                 f"{verdict.reason}."),
+                    )
+                outcome = self._submit_stop(order, req, price_bp, limit_bp)
+            else:
+                # Registered before add() because fill/cancel callbacks fire
+                # *during* add() and look this entry up. If the order fully
+                # fills or is cancelled, those same callbacks remove it again.
+                self._meta[order_id] = _OrderMeta(
+                    order_id=order_id,
+                    side=req.side,
+                    price=ob.from_basis_points(price_bp),
+                    order_type=req.order_type,
+                    symbol=req.symbol,
+                    created_at=time.strftime("%H:%M:%S"),
+                    quantity=req.quantity,
+                )
 
-            self._current = _Outcome(order_id)
-            try:
-                self._book.add(order)
-                outcome = self._current
-            finally:
-                self._current = None
+                self._current = _Outcome(order_id)
+                try:
+                    self._book.add(order)
+                    # add() is the only call here that produces trades, and
+                    # _on_fill only recorded them. Act on them now that the
+                    # book is no longer mid-match: any stop this order's
+                    # trades crossed is submitted from inside this call, so
+                    # the response can report it.
+                    self._stops.drain_triggers()
+                    outcome = self._current
+                finally:
+                    self._current = None
 
         self._schedule_broadcast()
         return self._describe(outcome, req)
 
+    def _submit_stop(self, order, req: OrderRequest, price_bp: int,
+                     limit_bp: int) -> _Outcome:
+        """Park a validated STOP / STOP_LIMIT order. Caller holds `_lock`.
+
+        The caller has already run `validators.validate()`; what's left is to
+        record the projection entry and hand the order to the manager, which
+        acknowledges it PENDING_TRIGGER.
+        """
+        self._pending_stops[order.id] = _StopMeta(
+            order_id=order.id,
+            side=req.side,
+            order_type=req.order_type,
+            stop_price=ob.from_basis_points(price_bp),
+            limit_price=ob.from_basis_points(limit_bp) if limit_bp else None,
+            quantity=req.quantity,
+            symbol=req.symbol,
+            created_at=time.strftime("%H:%M:%S"),
+        )
+
+        self._current = _Outcome(order.id)
+        try:
+            # Accepted stops are parked, not matched, so this produces no
+            # trades and nothing to drain. A stop that could fire right now
+            # was already rejected by validate() above.
+            self._stops.submit(order, self._on_ack)
+            return self._current
+        finally:
+            self._current = None
+
     def _describe(self, outcome: _Outcome,
                   req: OrderRequest) -> OrderSubmissionResponse:
-        """Turn the engine's event stream for one order into an API response."""
+        """Turn the engine's event stream for one order into an API response.
+
+        Stops get their own answers: an accepted one has traded nothing and
+        isn't in the book, so the usual filled/resting vocabulary doesn't
+        apply. Everything else falls through to `_describe_order()`, with a
+        note appended if this order's trades fired any stops.
+        """
+        if outcome.ack_status == ob.OrderStatus.PENDING_TRIGGER:
+            stop = self._pending_stops.get(outcome.order_id)
+            trigger = stop.stop_price if stop is not None else req.price
+            direction = "rises to" if req.side == "buy" else "falls to"
+            detail = ""
+            if req.order_type == "stop_limit" and stop is not None \
+                    and stop.limit_price is not None:
+                detail = f", then works as a limit at ${stop.limit_price:,.2f}"
+            return OrderSubmissionResponse(
+                accepted=True,
+                order_id=outcome.order_id,
+                status="pending_trigger",
+                message=(f"Stop order {outcome.order_id} accepted — held off "
+                         f"the book until the market {direction} "
+                         f"${trigger:,.2f}{detail}."),
+            )
+
+        if outcome.ack_status == ob.OrderStatus.REJECTED:
+            return OrderSubmissionResponse(
+                accepted=False,
+                order_id=outcome.order_id,
+                status="rejected",
+                message=f"Order {outcome.order_id} rejected by the engine.",
+            )
+
+        response = self._describe_order(outcome, req)
+
+        if outcome.triggers:
+            ids = ", ".join(str(i) for i in outcome.triggers)
+            plural = "stops" if len(outcome.triggers) > 1 else "stop"
+            response.message += f" Triggered pending {plural} {ids}."
+
+        return response
+
+    def _describe_order(self, outcome: _Outcome,
+                        req: OrderRequest) -> OrderSubmissionResponse:
+        """The fill/rest/cancel vocabulary, for orders that reach the book."""
         filled = outcome.filled
         order_id = outcome.order_id
 
@@ -307,21 +530,28 @@ class EngineBridge:
 
     def cancel_order(self, req: CancelRequest) -> CancelResponse:
         with self._lock:
-            # TreeOrderBook::cancel() is a silent no-op for unknown IDs, so
-            # ask first to distinguish "cancelled" from "never existed".
-            if not self._book.has_order(req.order_id):
+            # A pending stop isn't in the book, so the book can't cancel it —
+            # ask the manager first, and only then fall through to the book.
+            if self._stops.has_stop(req.order_id):
+                self._stops.cancel(req.order_id, time.time_ns())
+                message = f"Pending stop {req.order_id} cancelled."
+            elif not self._book.has_order(req.order_id):
+                # TreeOrderBook::cancel() is a silent no-op for unknown IDs,
+                # so ask first to distinguish "cancelled" from "never existed".
                 return CancelResponse(
                     accepted=False,
                     order_id=req.order_id,
                     message=f"Order {req.order_id} not found or already filled.",
                 )
-            self._book.cancel(req.order_id)
+            else:
+                self._book.cancel(req.order_id)
+                message = f"Order {req.order_id} cancelled."
 
         self._schedule_broadcast()
         return CancelResponse(
             accepted=True,
             order_id=req.order_id,
-            message=f"Order {req.order_id} cancelled.",
+            message=message,
         )
 
     def get_fills(self, limit: int = 50) -> List[FillRecord]:
@@ -377,6 +607,16 @@ class EngineBridge:
                     self._meta.pop(meta.order_id, None)
                     self._projection_repairs += 1
 
+            # Same discipline for pending stops, against the only component
+            # that knows whether one still exists.
+            pending: List[_StopMeta] = []
+            for stop in list(self._pending_stops.values()):
+                if self._stops.has_stop(stop.order_id):
+                    pending.append(stop)
+                else:
+                    self._pending_stops.pop(stop.order_id, None)
+                    self._projection_repairs += 1
+
             # Group live order IDs by level, preserving submission order,
             # which for a FIFO book is time priority.
             by_level: Dict[tuple, List[_OrderMeta]] = {}
@@ -418,6 +658,15 @@ class EngineBridge:
                     )
                     for m in live
                 ],
+                pending_stops=[
+                    PendingStop(
+                        order_id=s.order_id, side=s.side,
+                        order_type=s.order_type, stop_price=s.stop_price,
+                        limit_price=s.limit_price, quantity=s.quantity,
+                        symbol=s.symbol, created_at=s.created_at,
+                    )
+                    for s in pending
+                ],
             )
 
     def diagnostics(self) -> Dict[str, int]:
@@ -429,6 +678,8 @@ class EngineBridge:
                 "projection_size": len(self._meta),
                 "projection_repairs": self._projection_repairs,
                 "fills": len(self._fills),
+                "pending_stops": self._stops.pending_stop_count(),
+                "stops_triggered": self._stops_triggered,
             }
 
     # ── WebSocket ─────────────────────────────────────────────────────────────

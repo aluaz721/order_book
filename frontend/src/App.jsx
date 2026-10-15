@@ -57,7 +57,14 @@ function useOrderBookSocket() {
 // ── OrderForm ─────────────────────────────────────────────────────────────────
 
 const DEFAULT_FORM = { side: 'buy', price: '100.25', quantity: '10',
-                       order_type: 'limit', symbol: 'AAPL' };
+                       order_type: 'limit', symbol: 'AAPL',
+                       // Stop types only. Defaults sit on the sell side of
+                       // the book's opening price: a sell stop has to trigger
+                       // below the market, and its limit at or above the
+                       // trigger (see order_validators.hpp).
+                       stop_price: '99.00', limit_price: '99.50' };
+
+const STOP_TYPES = ['stop', 'stop_limit'];
 
 function OrderForm({ onSubmitted }) {
   const [form, setForm]     = useState(DEFAULT_FORM);
@@ -71,14 +78,24 @@ function OrderForm({ onSubmitted }) {
     setBusy(true);
     setFlash(null);
     try {
+      // Built field by field rather than spread, so a stop price never rides
+      // along on a limit order (or vice versa).
+      const payload = {
+        side: form.side,
+        symbol: form.symbol,
+        order_type: form.order_type,
+        quantity: parseInt(form.quantity, 10),
+        price: parseFloat(isStop ? form.stop_price : form.price),
+      };
+      if (isStop) payload.stop_price = parseFloat(form.stop_price);
+      if (form.order_type === 'stop_limit') {
+        payload.limit_price = parseFloat(form.limit_price);
+      }
+
       const res = await fetch(`${API_BASE}/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...form,
-          price: parseFloat(form.price),
-          quantity: parseInt(form.quantity, 10),
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       setFlash({ ok: data.accepted, msg: data.message });
@@ -90,6 +107,7 @@ function OrderForm({ onSubmitted }) {
     }
   };
 
+  const isStop = STOP_TYPES.includes(form.order_type);
   const needsPrice = form.order_type !== 'market';
 
   return (
@@ -109,20 +127,36 @@ function OrderForm({ onSubmitted }) {
           <select value={form.order_type} onChange={set('order_type')}>
             <option value="limit">Limit</option>
             <option value="market">Market</option>
+            <option value="market_limit">Market Limit</option>
             <option value="ioc">IOC</option>
             <option value="fok">FOK</option>
+            <option value="stop">Stop</option>
+            <option value="stop_limit">Stop Limit</option>
           </select>
         </label>
 
+        {/* For a stop, the engine's price field IS the trigger price, so the
+            box is relabelled rather than shown alongside an unused one. */}
         <label className="field">
-          <span>Price</span>
+          <span>{isStop ? 'Stop price' : 'Price'}</span>
           <input
             type="number" step="0.01" min="0.01"
-            value={form.price} onChange={set('price')}
+            value={isStop ? form.stop_price : form.price}
+            onChange={set(isStop ? 'stop_price' : 'price')}
             disabled={!needsPrice}
             className={!needsPrice ? 'disabled' : ''}
           />
         </label>
+
+        {form.order_type === 'stop_limit' && (
+          <label className="field">
+            <span>Limit price</span>
+            <input
+              type="number" step="0.01" min="0.01"
+              value={form.limit_price} onChange={set('limit_price')}
+            />
+          </label>
+        )}
 
         <label className="field">
           <span>Quantity</span>
@@ -203,6 +237,61 @@ function BookPanel({ side, levels = [], onCancel }) {
           );
         })
       )}
+    </div>
+  );
+}
+
+// ── PendingStops ──────────────────────────────────────────────────────────────
+//
+// Stops get their own panel because they are deliberately absent from the
+// book: the engine holds them in a StopOrderManager until a trade crosses
+// their price, so they have no level, no queue position and no effect on
+// depth. Without somewhere to show them, an accepted stop would look like an
+// order that disappeared.
+
+function PendingStops({ stops = [], onCancel }) {
+  if (stops.length === 0) {
+    return (
+      <div className="book-empty">
+        No pending stops — a stop order waits off the book until a trade
+        crosses its price, then enters as a market or limit order.
+      </div>
+    );
+  }
+
+  return (
+    <div className="fill-table-wrap">
+      <table className="fill-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Order ID</th>
+            <th>Side</th>
+            <th>Type</th>
+            <th>Trigger</th>
+            <th>Limit</th>
+            <th>Qty</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {stops.map((s) => (
+            <tr key={s.order_id} className={`fill-row ${s.side}`}>
+              <td>{s.created_at}</td>
+              <td>{s.order_id}</td>
+              <td className={s.side}>{s.side.toUpperCase()}</td>
+              <td>{s.order_type === 'stop_limit' ? 'STOP LIMIT' : 'STOP'}</td>
+              <td>{fmt(s.stop_price)}</td>
+              <td>{s.limit_price == null ? '—' : fmt(s.limit_price)}</td>
+              <td>{s.quantity}</td>
+              <td>
+                <button className="btn-cancel" onClick={() => onCancel(s.order_id)}
+                        title={`Cancel pending stop ${s.order_id}`}>✕</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -300,6 +389,7 @@ export default function App() {
 
   const bids = book?.bids ?? [];
   const asks = book?.asks ?? [];
+  const pendingStops = book?.pending_stops ?? [];
 
   return (
     <div className="shell">
@@ -336,6 +426,15 @@ export default function App() {
             <BookPanel side="ask" levels={asks} onCancel={cancelOrder} />
           </div>
         </div>
+      </section>
+
+      {/* ── Pending stops ── */}
+      <section className="section">
+        <h2 className="section-title">
+          Pending Stops
+          <span className="fill-count">{pendingStops.length} waiting</span>
+        </h2>
+        <PendingStops stops={pendingStops} onCancel={cancelOrder} />
       </section>
 
       {/* ── Fill history ── */}

@@ -82,3 +82,113 @@ def test_websocket_pushes_snapshot_on_connect_and_after_an_order(client):
         assert update["book"]["bids"][0]["price"] == 100.0
         assert update["book"]["bids"][0]["quantity"] == 10
         assert update["book"]["best_bid"] == 100.0
+
+
+# ── Stop orders over HTTP ─────────────────────────────────────────────────────
+
+def seed_market(client):
+    """Two-sided book: 100 bid at 99.50, 100 offered at 100.50."""
+    client.post("/orders", json={"side": "buy", "price": 99.50, "quantity": 100,
+                                 "order_type": "limit", "symbol": "AAPL"})
+    client.post("/orders", json={"side": "sell", "price": 100.50, "quantity": 100,
+                                 "order_type": "limit", "symbol": "AAPL"})
+
+
+def test_all_seven_order_types_are_accepted_by_the_schema(client):
+    seed_market(client)
+
+    bodies = [
+        {"side": "sell", "price": 99.50, "quantity": 10, "order_type": "limit"},
+        {"side": "buy", "price": 100.50, "quantity": 10, "order_type": "market"},
+        {"side": "buy", "price": 120.00, "quantity": 10,
+         "order_type": "market_limit"},
+        {"side": "buy", "price": 100.50, "quantity": 10, "order_type": "ioc"},
+        {"side": "buy", "price": 100.50, "quantity": 10, "order_type": "fok"},
+        {"side": "sell", "price": 99.00, "quantity": 10, "order_type": "stop",
+         "stop_price": 99.00},
+        {"side": "sell", "price": 98.00, "quantity": 10,
+         "order_type": "stop_limit", "stop_price": 98.00, "limit_price": 98.25},
+    ]
+
+    for body in bodies:
+        res = client.post("/orders", json={**body, "symbol": "AAPL"})
+        assert res.status_code == 200, body
+        assert res.json()["accepted"] is True, body
+
+
+def test_unknown_order_type_is_rejected_by_the_schema(client):
+    res = client.post("/orders", json={"side": "buy", "price": 100.0,
+                                       "quantity": 10, "order_type": "iceberg",
+                                       "symbol": "AAPL"})
+    assert res.status_code == 422
+
+
+def test_stop_limit_without_a_limit_price_is_a_422(client):
+    seed_market(client)
+    res = client.post("/orders", json={"side": "sell", "price": 99.00,
+                                       "quantity": 10,
+                                       "order_type": "stop_limit",
+                                       "stop_price": 99.00, "symbol": "AAPL"})
+    assert res.status_code == 422
+    assert "limit_price" in res.text
+
+
+def test_stop_endpoint_reports_pending_then_triggered(client):
+    seed_market(client)
+
+    res = client.post("/orders", json={"side": "sell", "price": 99.00,
+                                       "quantity": 50, "order_type": "stop",
+                                       "stop_price": 99.00, "symbol": "AAPL"})
+    body = res.json()
+    assert body["status"] == "pending_trigger"
+    assert client.get("/diagnostics").json()["pending_stops"] == 1
+
+    # Sell through 99.00 to fire it.
+    client.post("/orders", json={"side": "buy", "price": 98.50, "quantity": 200,
+                                 "order_type": "limit", "symbol": "AAPL"})
+    swept = client.post("/orders", json={"side": "sell", "price": 98.00,
+                                         "quantity": 150, "order_type": "limit",
+                                         "symbol": "AAPL"}).json()
+
+    assert f"Triggered pending stop {body['order_id']}" in swept["message"]
+
+    diagnostics = client.get("/diagnostics").json()
+    assert diagnostics["pending_stops"] == 0
+    assert diagnostics["stops_triggered"] == 1
+    assert diagnostics["projection_repairs"] == 0
+
+
+def test_pending_stop_is_cancelled_through_the_orders_endpoint(client):
+    seed_market(client)
+    order_id = client.post("/orders", json={"side": "sell", "price": 99.00,
+                                            "quantity": 50,
+                                            "order_type": "stop",
+                                            "stop_price": 99.00,
+                                            "symbol": "AAPL"}).json()["order_id"]
+
+    assert client.delete(f"/orders/{order_id}").json()["accepted"] is True
+    assert client.get("/diagnostics").json()["pending_stops"] == 0
+    # Already gone — the same endpoint now reports not found.
+    assert client.delete(f"/orders/{order_id}").json()["accepted"] is False
+
+
+def test_websocket_snapshot_carries_pending_stops(client):
+    seed_market(client)
+
+    with client.websocket_connect("/ws/book") as ws:
+        initial = ws.receive_json()
+        assert initial["book"]["pending_stops"] == []
+
+        client.post("/orders", json={"side": "sell", "price": 99.00,
+                                     "quantity": 50, "order_type": "stop",
+                                     "stop_price": 99.00, "symbol": "AAPL"})
+
+        update = ws.receive_json()
+        stops = update["book"]["pending_stops"]
+        assert len(stops) == 1
+        assert stops[0]["order_type"] == "stop"
+        assert stops[0]["stop_price"] == 99.00
+        assert stops[0]["quantity"] == 50
+        # And it stays out of the book itself.
+        assert update["book"]["asks"][0]["quantity"] == 100
+        assert update["book"]["best_ask"] == 100.50

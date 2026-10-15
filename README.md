@@ -79,7 +79,7 @@ python/
       main.py               #   FastAPI routes: REST endpoints + WebSocket book stream
       services.py           #   EngineBridge — adapter onto the C++ TreeOrderBook
       models.py             #   Pydantic wire models
-    tests/                  #   pytest suite (22 tests) against the real engine
+    tests/                  #   pytest suite (42 tests) against the real engine
   .venv/
  
 frontend/
@@ -114,17 +114,30 @@ React (Vite)                         Python                         C++
   ├────────────────────────────────────►│  EngineBridge                │
   │  DELETE /orders/{id}                │   ├─ float $ → int64 bp      │
   │                                     │   ├─ serialise under a lock  │
-  │                                     │   └─ book.add() ────────────►│ TreeOrderBook
-  │                                     │                              │   ├─ FIFOMatcher
-  │                                     │   on_fill / on_cancel        │   ├─ bids_ / asks_
-  │                                     │   on_ack  / on_book_update ◄─┤   └─ order_map_
+  │                                     │   ├─ book.add() ────────────►│ TreeOrderBook
+  │                                     │   │                          │   ├─ FIFOMatcher
+  │                                     │   │  on_fill / on_cancel     │   ├─ bids_ / asks_
+  │                                     │   │  on_ack / on_book_update◄┤   └─ order_map_
+  │                                     │   │         │                │
+  │                                     │   │   record_trade()         │
+  │                                     │   ▼         ▼                │
+  │                                     │  StopOrderManager            │
+  │                                     │   └─ drain_triggers() ──────►│ (converted order)
   │  ◄═══ WebSocket /ws/book ═══════════┤                              │
-  │       (BookSnapshot + fills)        │                              │
+  │       (book + fills + pending stops)│                              │
 
    EngineBridge owns no matching logic. It translates vocabulary, serialises
    access (OrderBookInterface is not thread-safe), and projects the per-order
    metadata the engine deliberately doesn't model — submission time, order
    type, per-level order IDs — from the engine's own callback stream.
+
+   All seven order types are available here. STOP and STOP_LIMIT never reach
+   the book: the bridge owns a StopOrderManager that holds them until a trade
+   crosses their price. Each fill only *records* the trade (the book is
+   mid-match inside its own callback); the bridge drains the recorded trades
+   once `add()` has returned, which is when a triggered stop's converted
+   order enters the book. Pending stops ride in the WebSocket snapshot
+   alongside the book, since by design they are absent from its depth.
 
 2. Simulation path  (reachable from C++ and from Python)
 ──────────────────────────────────────────────────────
@@ -174,6 +187,12 @@ order_map_  std::unordered_map<order_id, {side, price, iterator}>  O(1) cancel
 | `STOP_LIMIT` | Triggers as LIMIT at `limit_price` when stop price is crossed |
 | `IOC` | Immediate-or-cancel: fill what's available, cancel remainder |
 | `FOK` | Fill-or-kill: fill entire quantity or cancel without any partial fills |
+
+All seven are reachable from every surface: C++ directly, Python via
+[`order_book.Session`](#python-library), and the dashboard's order form.
+`STOP` and `STOP_LIMIT` are the two that never touch `OrderBookInterface
+::add()` — they are held by a `StopOrderManager` until a trade crosses their
+price, so whichever surface submits one needs that manager behind it.
  
 **Key interfaces**
  
@@ -472,10 +491,12 @@ pip install -e ".[test]" --no-build-isolation
 pytest                      # runs ./tests, per pyproject's testpaths
 ```
 
-**Backend — 22 pytest cases** driving `EngineBridge` and the HTTP/WebSocket
+**Backend — 42 pytest cases** driving `EngineBridge` and the HTTP/WebSocket
 surface against the real compiled engine, not a stand-in. These are what
 catch a regression in the float↔basis-point conversion, the FIFO ordering the
-UI displays, or a projection that drifts from the engine's own book state.
+UI displays, or a projection that drifts from the engine's own book state —
+including through a stop trigger, where the order that enters the book is one
+the client never submitted.
 
 ```bash
 cd python/backend
@@ -560,16 +581,6 @@ interface only exposes `pop_front()` / `reduce_front()` / `remove(order_id)`.
 desynchronise the level's cached `total_qty_`. So the interface needs
 something like `reduce(order_id, qty)`, implemented in both price levels,
 before a correct pro-rata matcher can exist.
-
-**Reachable from the Python library but not from the dashboard**
-
-All seven order types work from Python — see [Python Library](#python-library)
-above. The REST/WebSocket layer still offers four (limit, market, IOC, FOK),
-because `EngineBridge` drives a `TreeOrderBook` directly and has no stop
-manager of its own; serving stops from the dashboard means either giving it
-one (`StopOrderManager` is constructible from Python against a bare book) or
-moving it onto a `SimulationEngine` + `InteractiveSource`. The frontend form
-and `OrderRequest.order_type` would widen to match.
 
 **Historical replayer**
 
